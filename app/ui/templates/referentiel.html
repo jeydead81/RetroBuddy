@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block contenu %}
+<h1>Référentiel prix</h1>
+<table>
+  <tr><th>Code</th><th>Date</th><th>Désignation</th><th>PA brut</th><th>Remise %</th><th>PA net</th></tr>
+  {% for r in rows %}
+    <tr><td>{{ r["code"] }}</td><td>{{ r["date_facture"] }}</td><td>{{ r["designation"] }}</td>
+        <td>{{ r["prix_brut"] }}</td><td>{{ r["remise_pct"] }}</td><td>{{ r["prix_net"] }}</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}

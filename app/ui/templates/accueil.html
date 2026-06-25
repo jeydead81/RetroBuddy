@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block contenu %}
+<h1>Import factures labo</h1>
+<form action="/ingest" method="post" enctype="multipart/form-data">
+  <input type="file" name="fichiers" accept="application/pdf" multiple required>
+  <button type="submit">Ingérer</button>
+</form>
+{% if recap %}
+  <h2>Résultat</h2>
+  <ul>
+    <li class="ingeree">Ingérées : {{ recap.get("ingeree", 0) }}</li>
+    <li class="ignoree">Ignorées : {{ recap.get("ignoree", 0) }}</li>
+    <li class="en_revue">En revue : {{ recap.get("en_revue", 0) }}</li>
+  </ul>
+  <table>
+    <tr><th>Fichier</th><th>Statut</th><th>Motif</th></tr>
+    {% for nom, statut, motif in details %}
+      <tr><td>{{ nom }}</td><td class="{{ statut }}">{{ statut }}</td><td>{{ motif or "" }}</td></tr>
+    {% endfor %}
+  </table>
+{% endif %}
+{% endblock %}
