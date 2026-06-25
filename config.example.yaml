@@ -1,0 +1,5 @@
+# Copier en config.local.yaml (gitignored) et renseigner la clé.
+anthropic_api_key: "sk-ant-xxxxx"
+model_defaut: "claude-sonnet-4-6"
+model_escalade: "claude-opus-4-8"
+seuil_reconciliation_pct: 1.0

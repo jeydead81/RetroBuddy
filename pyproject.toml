@@ -1,0 +1,7 @@
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+markers = [
+    "integration: tests qui appellent la vraie API Anthropic (désactivés par défaut)",
+]
+addopts = "-m 'not integration'"
