@@ -1,4 +1,7 @@
+from pathlib import Path
 from typing import Protocol
+
+import anthropic
 
 from app.temps1.pdf_reader import PdfDocument
 from app.temps1.schemas import FactureExtraite
@@ -23,3 +26,38 @@ class MockExtractor:
         if self.defaut is not None:
             return self.defaut
         raise KeyError(f"Aucune facture mock pour le modèle {model}")
+
+
+class ExtractionError(RuntimeError):
+    pass
+
+
+class ClaudeExtractor:
+    """Extracteur réel : envoie le PDF à Claude (lecture native) avec sortie structurée."""
+
+    def __init__(self, api_key: str, prompt_path="prompts/extraction_facture.txt"):
+        self._client = anthropic.Anthropic(api_key=api_key)
+        self._prompt = Path(prompt_path).read_text(encoding="utf-8")
+
+    def extraire(self, pdf: PdfDocument, model: str) -> FactureExtraite:
+        resp = self._client.messages.parse(
+            model=model,
+            max_tokens=16000,
+            system=[{"type": "text", "text": self._prompt,
+                     "cache_control": {"type": "ephemeral"}}],
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "document",
+                     "source": {"type": "base64", "media_type": "application/pdf",
+                                "data": pdf.base64}},
+                    {"type": "text", "text": "Extrais cette facture selon le schéma."},
+                ],
+            }],
+            output_format=FactureExtraite,
+        )
+        if resp.stop_reason == "refusal":
+            raise ExtractionError("extraction refusée par le modèle")
+        if resp.parsed_output is None:
+            raise ExtractionError("extraction non conforme au schéma")
+        return resp.parsed_output
