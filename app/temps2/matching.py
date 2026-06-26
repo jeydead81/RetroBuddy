@@ -1,4 +1,5 @@
 from app.codes.correspondance import resoudre_via_correspondance
+from app.temps2.normalisation_designation import normaliser_designation, score_designation
 
 
 def _code_au_referentiel(conn, code):
@@ -20,3 +21,28 @@ def resoudre_code(conn, code):
     if autre and _code_au_referentiel(conn, autre):
         return (autre, 2)
     return (None, None)
+
+
+def resoudre_par_designation(conn, designation, seuil_bas, abreviations=None):
+    """Cherche dans le référentiel la meilleure désignation proche (passes 3-4).
+
+    Retourne (code, designation_referentiel, score) si score >= seuil_bas,
+    sinon (None, None, 0.0).
+    """
+    cible = normaliser_designation(designation, abreviations)
+    if not cible:
+        return (None, None, 0.0)
+    meilleur = (None, None, 0.0)
+    vu = set()
+    for r in conn.execute(
+            "SELECT DISTINCT code, designation FROM referentiel_prix WHERE code IS NOT NULL"):
+        cle = (r["code"], r["designation"])
+        if cle in vu:
+            continue
+        vu.add(cle)
+        s = score_designation(cible, normaliser_designation(r["designation"], abreviations))
+        if s > meilleur[2]:
+            meilleur = (r["code"], r["designation"], s)
+    if meilleur[2] >= seuil_bas:
+        return meilleur
+    return (None, None, 0.0)
