@@ -29,7 +29,7 @@ def get_retro_extractor():
 
 
 def creer_app(db_path="data/retrocession.db") -> FastAPI:
-    app = FastAPI(title="RetroBuddy — Temps 1")
+    app = FastAPI(title="RetroBuddy")
     app.state.db_path = db_path
     app.state.config = charger_config()
 
