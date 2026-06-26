@@ -1,5 +1,5 @@
 from app.db import get_connection, init_db
-from app.temps1.referentiel import enregistrer_lignes_referentiel
+from app.temps1.referentiel import enregistrer_referentiel
 from app.temps1.schemas import LigneFacture
 
 
@@ -9,15 +9,17 @@ def _conn(tmp_path):
     return conn
 
 
-def _ligne(code, net):
-    return LigneFacture(code=code, designation="X", prix_brut=6.0, remise_pct=10.0,
+def _ligne(net):
+    return LigneFacture(designation="X", prix_brut=6.0, remise_pct=10.0,
                         prix_net=net, montant_ht=net)
 
 
 def test_historisation_deux_dates(tmp_path):
     conn = _conn(tmp_path)
-    enregistrer_lignes_referentiel(conn, 1, "2026-01-10", [_ligne("3400930000007", 5.0)])
-    enregistrer_lignes_referentiel(conn, 2, "2026-02-10", [_ligne("3400930000007", 4.5)])
+    enregistrer_referentiel(conn, 1, "2026-01-10", "URGO",
+                            [("3400930000007", "CIP13", _ligne(5.0))])
+    enregistrer_referentiel(conn, 2, "2026-02-10", "URGO",
+                            [("3400930000007", "CIP13", _ligne(4.5))])
     rows = conn.execute(
         "SELECT date_facture, prix_net FROM referentiel_prix WHERE code=? ORDER BY date_facture",
         ("3400930000007",),
@@ -29,8 +31,10 @@ def test_historisation_deux_dates(tmp_path):
 
 def test_idempotence_meme_code_meme_date(tmp_path):
     conn = _conn(tmp_path)
-    enregistrer_lignes_referentiel(conn, 1, "2026-01-10", [_ligne("3400930000007", 5.0)])
-    enregistrer_lignes_referentiel(conn, 9, "2026-01-10", [_ligne("3400930000007", 4.0)])
+    enregistrer_referentiel(conn, 1, "2026-01-10", "URGO",
+                            [("3400930000007", "CIP13", _ligne(5.0))])
+    enregistrer_referentiel(conn, 9, "2026-01-10", "URGO",
+                            [("3400930000007", "CIP13", _ligne(4.0))])
     rows = conn.execute(
         "SELECT prix_net, facture_id FROM referentiel_prix WHERE code=?",
         ("3400930000007",),
@@ -38,3 +42,13 @@ def test_idempotence_meme_code_meme_date(tmp_path):
     assert len(rows) == 1
     assert rows[0]["prix_net"] == 4.0      # remplacé par la dernière ingestion
     assert rows[0]["facture_id"] == 9
+
+
+def test_stocke_type_code_et_labo(tmp_path):
+    conn = _conn(tmp_path)
+    enregistrer_referentiel(conn, 3, "2026-03-02", "ABBVIE",
+                            [("20007519", "interne", _ligne(4685.34))])
+    r = conn.execute("SELECT code, type_code, labo FROM referentiel_prix").fetchone()
+    assert r["code"] == "20007519"
+    assert r["type_code"] == "interne"
+    assert r["labo"] == "ABBVIE"

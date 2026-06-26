@@ -55,7 +55,8 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
     @app.get("/referentiel", response_class=HTMLResponse)
     def referentiel(request: Request):
         rows = conn().execute(
-            "SELECT code, date_facture, designation, prix_brut, remise_pct, prix_net "
+            "SELECT code, type_code, labo, date_facture, designation, "
+            "prix_brut, remise_pct, prix_net "
             "FROM referentiel_prix ORDER BY code, date_facture").fetchall()
         return TEMPLATES.TemplateResponse(request, "referentiel.html", {"rows": rows})
 

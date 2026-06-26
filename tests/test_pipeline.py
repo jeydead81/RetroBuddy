@@ -27,9 +27,9 @@ def _facture(type_document="facture_marchandise", lignes=None, total=None):
     )
 
 
-def _ligne(code="3400930000007", net=5.0, montant=10.0):
-    return LigneFacture(code=code, designation="X", prix_brut=6.0, remise_pct=10.0,
-                        prix_net=net, montant_ht=montant)
+def _ligne(code="3400930000007", net=5.0, montant=10.0, code_interne=None):
+    return LigneFacture(code=code, code_interne=code_interne, designation="X",
+                        prix_brut=6.0, remise_pct=10.0, prix_net=net, montant_ht=montant)
 
 
 def test_facture_nominale_ingeree(tmp_path):
@@ -73,7 +73,8 @@ def test_escalade_opus_recupere(tmp_path):
 
 def test_ligne_checksum_invalide_exclue_du_referentiel(tmp_path):
     conn = _conn(tmp_path)
-    # code à clé invalide → ligne flaggée, hors référentiel, mais total réconcilie
+    # code 13 chiffres à clé invalide → ligne flaggée (suspect), hors référentiel,
+    # mais total réconcilie donc facture ingérée.
     f = _facture(lignes=[_ligne(code="3400930000000", montant=10.0)], total=10.0)
     res = traiter_facture(conn, _pdf(), MockExtractor(defaut=f), CFG)
     assert res.statut == "ingeree"
@@ -81,3 +82,29 @@ def test_ligne_checksum_invalide_exclue_du_referentiel(tmp_path):
     ligne = conn.execute("SELECT checksum_ok, valide FROM lignes_facture").fetchone()
     assert ligne["checksum_ok"] == 0
     assert ligne["valide"] == 0
+
+
+def test_ligne_sans_cip_stockee_comme_interne(tmp_path):
+    conn = _conn(tmp_path)
+    # Cas AbbVie : prix correct, pas de CIP, seul un code interne.
+    f = _facture(lignes=[_ligne(code=None, code_interne="20007519", montant=10.0)], total=10.0)
+    res = traiter_facture(conn, _pdf(), MockExtractor(defaut=f), CFG)
+    assert res.statut == "ingeree"
+    assert res.n_referentiel == 1
+    r = conn.execute("SELECT code, type_code, labo FROM referentiel_prix").fetchone()
+    assert r["code"] == "20007519"
+    assert r["type_code"] == "interne"
+    assert r["labo"] == "URGO"
+    lf = conn.execute("SELECT valide, motif_ligne FROM lignes_facture").fetchone()
+    assert lf["valide"] == 1
+    assert "CIP" in lf["motif_ligne"]
+
+
+def test_ligne_sans_aucun_identifiant_exclue(tmp_path):
+    conn = _conn(tmp_path)
+    f = _facture(lignes=[_ligne(code=None, code_interne=None, montant=10.0)], total=10.0)
+    res = traiter_facture(conn, _pdf(), MockExtractor(defaut=f), CFG)
+    assert res.statut == "ingeree"
+    assert res.n_referentiel == 0
+    lf = conn.execute("SELECT valide FROM lignes_facture").fetchone()
+    assert lf["valide"] == 0

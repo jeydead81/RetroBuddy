@@ -319,3 +319,43 @@ Prompt caching sur le prompt système → réduction supplémentaire sur un lot.
    commercial n'est pas traité comme une UG.
 6. Le cœur métier est couvert par des tests unitaires verts, sans appel API.
 7. La clé API n'est dans aucun fichier versionné.
+
+---
+
+## 13. Addendum 2026-06-25 — Option A : lignes avec prix mais sans CIP
+
+**Constat terrain** (1er test sur vrais PDF) : certaines factures labo ne portent **aucun
+CIP13/EAN13**, seulement un **code interne** (ex. AbbVie `20007519` pour VENCLYXTO, Fresenius
+`107621`). Ce sont des **produits chers** de la rétrocession. La règle initiale §5.2
+(« code rattaché » = CIP/EAN valide obligatoire) les excluait du référentiel → perte.
+
+**Décision (Option A) : stocker quand même ces lignes**, sous leur meilleur identifiant
+disponible, pour ne pas perdre le prix et alimenter le matching **par désignation** du Temps 2.
+
+### 13.1 Nouvelle règle de sélection (`app/temps1/selection.py`)
+`qualifier_ligne(ligne)` remplace l'ancien `filtres.ligne_valide` dans la décision
+d'inclusion. `filtres.est_ligne_prix` ne juge plus que le **prix** (brut > 0, remise < 100 %,
+net > 0), sans exiger de code.
+
+| Cas | Inclusion référentiel | Clé stockée (`code`) | `type_code` |
+|---|---|---|---|
+| CIP13 / EAN13 valide | oui | le code | `CIP13` / `EAN13` |
+| Prix OK, pas de CIP, code interne présent | **oui (Option A)** | le **code interne** | `interne` (note « sans CIP ») |
+| Code 13 chiffres mais clé KO | non (suspect, à vérifier) | — | `inconnu` |
+| Ni prix valide, ni identifiant | non | — | — |
+
+Sécurité montant : le prix stocké est exact (totaux réconciliés) ; le **risque de
+rapprochement** d'une ligne « sans CIP » est traité au Temps 2/3 par la voie orange (à
+confirmer), jamais en silence.
+
+### 13.2 Schéma (delta)
+- `referentiel_prix` : ajout de `type_code TEXT`, `labo TEXT`.
+- `lignes_facture` : ajout de `motif_ligne TEXT` (raison d'exclusion / note « sans CIP »).
+- `init_db` applique une **migration idempotente** (ALTER ADD COLUMN si absente) — la base
+  est copiée entre confrères, on ne casse pas l'existant.
+
+### 13.3 Suite (hors Temps 1)
+- **Option B (plus tard, §13 points ouverts)** : table de correspondance `code interne → CIP13`
+  via un référentiel CIP officiel, pour donner un vrai CIP à ces lignes.
+- Persister les **PDF sources** déposés (`data/factures_sources/`) : permet de revérifier et
+  de ré-extraire sans re-déposer (l'`/ingest` actuel supprime le fichier temporaire).

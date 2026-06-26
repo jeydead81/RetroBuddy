@@ -26,11 +26,13 @@ CREATE TABLE IF NOT EXISTS lignes_facture (
   prix_brut REAL, remise_pct REAL, prix_net REAL,
   montant_ht REAL, tva REAL,
   checksum_ok INTEGER,
-  valide INTEGER
+  valide INTEGER,
+  motif_ligne TEXT
 );
 
 CREATE TABLE IF NOT EXISTS referentiel_prix (
   code TEXT, date_facture TEXT,
+  type_code TEXT, labo TEXT,
   prix_brut REAL, remise_pct REAL, prix_net REAL,
   designation TEXT, facture_id INTEGER,
   PRIMARY KEY (code, date_facture)
@@ -40,6 +42,15 @@ CREATE TABLE IF NOT EXISTS abreviations_labo (
   abrev TEXT PRIMARY KEY, complet TEXT
 );
 """
+
+# Colonnes ajoutées après la V1 initiale. Migration idempotente : la base
+# `retrocession.db` est copiée d'un poste à l'autre entre confrères, on doit
+# pouvoir la mettre à niveau sans perdre les données existantes.
+_COLONNES_AJOUTEES = [
+    ("referentiel_prix", "type_code", "TEXT"),
+    ("referentiel_prix", "labo", "TEXT"),
+    ("lignes_facture", "motif_ligne", "TEXT"),
+]
 
 
 def get_connection(chemin="data/retrocession.db"):
@@ -52,6 +63,17 @@ def get_connection(chemin="data/retrocession.db"):
     return conn
 
 
+def _colonnes(conn, table):
+    return {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+
+
+def _migrer(conn):
+    for table, col, typ in _COLONNES_AJOUTEES:
+        if col not in _colonnes(conn, table):
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {typ}")
+
+
 def init_db(conn):
     conn.executescript(SCHEMA)
+    _migrer(conn)
     conn.commit()

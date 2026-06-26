@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
-from app.temps1 import classifier, filtres, garde_fous
-from app.temps1.referentiel import enregistrer_lignes_referentiel
+from app.temps1 import classifier, garde_fous, selection
+from app.temps1.referentiel import enregistrer_referentiel
 
 
 @dataclass
@@ -13,7 +13,11 @@ class Resultat:
     n_referentiel: int
 
 
-def _persister(conn, pdf, facture, statut, motif, modele, total_calcule):
+def _qualifier(facture):
+    return [(l, selection.qualifier_ligne(l)) for l in facture.lignes]
+
+
+def _persister(conn, pdf, facture, statut, motif, modele, total_calcule, qualifs):
     cur = conn.execute(
         """
         INSERT INTO factures
@@ -26,38 +30,34 @@ def _persister(conn, pdf, facture, statut, motif, modele, total_calcule):
          facture.entete.total_ht_affiche, total_calcule, statut, motif, modele),
     )
     facture_id = cur.lastrowid
-    for l in facture.lignes:
+    for l, q in qualifs:
         cok = garde_fous.checksum_ok(l)
-        retenue = filtres.ligne_valide(l) and cok
+        type_code = q.type_code or l.type_code
         conn.execute(
             """
             INSERT INTO lignes_facture
               (facture_id, code, type_code, code_interne, designation, qte, qte_gratuite,
-               prix_brut, remise_pct, prix_net, montant_ht, tva, checksum_ok, valide)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               prix_brut, remise_pct, prix_net, montant_ht, tva, checksum_ok, valide, motif_ligne)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (facture_id, l.code, l.type_code, l.code_interne, l.designation, l.qte,
+            (facture_id, l.code, type_code, l.code_interne, l.designation, l.qte,
              l.qte_gratuite, l.prix_brut, l.remise_pct, l.prix_net, l.montant_ht, l.tva,
-             int(cok), int(retenue)),
+             int(cok), int(q.inclure), q.note),
         )
     conn.commit()
     return facture_id
 
 
-def _lignes_retenues(facture):
-    return [l for l in facture.lignes
-            if filtres.ligne_valide(l) and garde_fous.checksum_ok(l)]
-
-
 def traiter_facture(conn, pdf, extractor, config) -> Resultat:
     seuil = config["seuil_reconciliation_pct"]
 
-    facture = extractor.extraire(pdf, config["model_defaut"])
     modele = config["model_defaut"]
+    facture = extractor.extraire(pdf, modele)
+    qualifs = _qualifier(facture)
 
     dec, motif = classifier.decision(facture)
     if dec == "ignorer":
-        fid = _persister(conn, pdf, facture, "ignoree", motif, modele, None)
+        fid = _persister(conn, pdf, facture, "ignoree", motif, modele, None, qualifs)
         return Resultat("ignoree", motif, fid, None, 0)
 
     ok, total = garde_fous.reconcilier_totaux(
@@ -67,18 +67,20 @@ def traiter_facture(conn, pdf, extractor, config) -> Resultat:
         # Escalade : une seule re-extraction en Opus
         modele = config["model_escalade"]
         facture = extractor.extraire(pdf, modele)
+        qualifs = _qualifier(facture)
         dec, motif = classifier.decision(facture)
         if dec == "ignorer":
-            fid = _persister(conn, pdf, facture, "ignoree", motif, modele, None)
+            fid = _persister(conn, pdf, facture, "ignoree", motif, modele, None, qualifs)
             return Resultat("ignoree", motif, fid, None, 0)
         ok, total = garde_fous.reconcilier_totaux(
             facture.lignes, facture.entete.total_ht_affiche, seuil)
         if not ok:
             m = "totaux non réconciliés (Sonnet + Opus)"
-            fid = _persister(conn, pdf, facture, "en_revue", m, modele, total)
+            fid = _persister(conn, pdf, facture, "en_revue", m, modele, total, qualifs)
             return Resultat("en_revue", m, fid, total, 0)
 
-    fid = _persister(conn, pdf, facture, "ingeree", None, modele, total)
-    retenues = _lignes_retenues(facture)
-    enregistrer_lignes_referentiel(conn, fid, facture.entete.date_facture, retenues)
-    return Resultat("ingeree", None, fid, total, len(retenues))
+    fid = _persister(conn, pdf, facture, "ingeree", None, modele, total, qualifs)
+    entrees = [(q.code_ref, q.type_code, l) for l, q in qualifs if q.inclure]
+    enregistrer_referentiel(conn, fid, facture.entete.date_facture,
+                            facture.entete.labo, entrees)
+    return Resultat("ingeree", None, fid, total, len(entrees))
