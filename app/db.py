@@ -39,6 +39,38 @@ CREATE TABLE IF NOT EXISTS referentiel_prix (
   PRIMARY KEY (code, date_facture)
 );
 
+CREATE TABLE IF NOT EXISTS retro_documents (
+  id INTEGER PRIMARY KEY,
+  fichier TEXT,
+  pharmacie_emettrice TEXT,
+  pharmacie_destinataire TEXT,
+  date_vente TEXT,
+  numero TEXT,
+  cout_estime REAL,
+  ingere_le TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS retro_lignes (
+  id INTEGER PRIMARY KEY,
+  retro_id INTEGER REFERENCES retro_documents(id),
+  designation TEXT, code TEXT, type_code TEXT,
+  qte REAL, tva REAL,
+  bl_numero TEXT, bl_date TEXT,
+  code_resolu TEXT,
+  prix_brut REAL, remise_pct REAL, prix_net REAL,
+  ug REAL DEFAULT 0,
+  passe_match INTEGER,
+  score_match REAL,
+  statut_ecart TEXT,
+  valide_utilisateur INTEGER DEFAULT 0,
+  saisie_manuelle INTEGER DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS correspondance_codes (
+  code_a TEXT, code_b TEXT,
+  PRIMARY KEY (code_a, code_b)
+);
+
 CREATE TABLE IF NOT EXISTS abreviations_labo (
   abrev TEXT PRIMARY KEY, complet TEXT
 );

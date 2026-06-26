@@ -54,3 +54,10 @@ def test_migration_ajoute_colonnes_a_une_base_ancienne(tmp_path):
     assert {"type_code", "labo"} <= _colonnes(conn, "referentiel_prix")
     assert "motif_ligne" in _colonnes(conn, "lignes_facture")
     assert "cout_estime" in _colonnes(conn, "factures")
+
+
+def test_init_db_cree_les_tables_temps2(tmp_path):
+    conn = get_connection(tmp_path / "t.db")
+    init_db(conn)
+    noms = _tables(conn)
+    assert {"retro_documents", "retro_lignes", "correspondance_codes"} <= noms
