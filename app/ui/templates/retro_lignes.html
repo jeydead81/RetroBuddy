@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block contenu %}
+<h1>Lignes de rétrocession</h1>
+<table>
+  <tr><th>Facture</th><th>BL</th><th>Date BL</th><th>Désignation</th><th>Code</th>
+      <th>Qté</th><th>TVA</th><th>PA net</th><th>Statut</th></tr>
+  {% for r in rows %}
+    <tr><td>{{ r["numero"] }}</td><td>{{ r["bl_numero"] }}</td><td>{{ r["bl_date"] }}</td>
+        <td>{{ r["designation"] }}</td><td>{{ r["code"] }}</td><td>{{ r["qte"] }}</td>
+        <td>{{ r["tva"] }}</td><td>{{ r["prix_net"] }}</td>
+        <td class="{{ 'ingeree' if r['statut_ecart'] == 'resolu' else 'en_revue' }}">{{ r["statut_ecart"] }}</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}

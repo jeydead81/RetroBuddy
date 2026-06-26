@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block contenu %}
+<h1>Import factures LGO (rétrocession)</h1>
+
+<p>Déjà en base : <strong id="n-base">{{ n_total }}</strong> factures LGO ·
+   Coût cumulé : $<strong id="cout-base">{{ "%.4f"|format(cout_total or 0) }}</strong></p>
+
+<form id="form-retro" action="/retro/ingest-un" method="post" enctype="multipart/form-data">
+  <input id="input-fichiers" type="file" name="fichier" accept="application/pdf" multiple required>
+  <button id="btn-retro" type="submit">Ingérer</button>
+</form>
+
+<div id="progress" style="display:none; margin-top:1rem;">
+  <p>Progression : <span id="compteur">0 / 0</span></p>
+  <div class="barre-fond"><div id="barre" class="barre-jauge"></div></div>
+  <p id="recap"></p>
+  <table>
+    <tr><th>Fichier</th><th>Lignes</th><th>Résolues</th><th>Rouges</th><th>Coût $</th></tr>
+    <tbody id="liste"></tbody>
+  </table>
+</div>
+
+<script>
+(function () {
+  const form = document.getElementById("form-retro");
+  const input = document.getElementById("input-fichiers");
+  const td = (txt, cls) => {
+    const c = document.createElement("td");
+    c.textContent = txt; if (cls) c.className = cls; return c;
+  };
+
+  form.addEventListener("submit", async function (e) {
+    e.preventDefault();
+    const files = Array.from(input.files);
+    if (!files.length) return;
+    const N = files.length;
+    const compteur = document.getElementById("compteur");
+    const barre = document.getElementById("barre");
+    const liste = document.getElementById("liste");
+    let coutLot = 0, resolu = 0, rouge = 0;
+
+    document.getElementById("progress").style.display = "block";
+    liste.innerHTML = "";
+    document.getElementById("btn-retro").disabled = true;
+    compteur.textContent = "0 / " + N;
+    barre.style.width = "0%";
+
+    for (let i = 0; i < N; i++) {
+      const fd = new FormData();
+      fd.append("fichier", files[i]);
+      let r;
+      try {
+        const resp = await fetch("/retro/ingest-un", { method: "POST", body: fd });
+        r = await resp.json();
+      } catch (err) {
+        r = { fichier: files[i].name, n_lignes: 0, n_resolu: 0, n_rouge: 0, cout: 0 };
+      }
+      coutLot += (r.cout || 0); resolu += (r.n_resolu || 0); rouge += (r.n_rouge || 0);
+      if (r.n_total != null) document.getElementById("n-base").textContent = r.n_total;
+      if (r.cout_total != null)
+        document.getElementById("cout-base").textContent = Number(r.cout_total).toFixed(4);
+
+      const tr = document.createElement("tr");
+      tr.appendChild(td(r.fichier || files[i].name));
+      tr.appendChild(td(String(r.n_lignes || 0)));
+      tr.appendChild(td(String(r.n_resolu || 0), "ingeree"));
+      tr.appendChild(td(String(r.n_rouge || 0), "en_revue"));
+      tr.appendChild(td((r.cout || 0).toFixed(5)));
+      liste.appendChild(tr);
+
+      compteur.textContent = (i + 1) + " / " + N;
+      barre.style.width = Math.round((i + 1) / N * 100) + "%";
+      document.getElementById("recap").textContent =
+        "Résolues " + resolu + " · Rouges " + rouge +
+        " · Coût du lot : $" + coutLot.toFixed(4);
+    }
+    document.getElementById("btn-retro").disabled = false;
+  });
+})();
+</script>
+{% endblock %}

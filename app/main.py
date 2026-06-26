@@ -10,6 +10,8 @@ from app.db import get_connection, init_db
 from app.temps1.extraction_ia import ClaudeExtractor
 from app.temps1.pdf_reader import lire_pdf
 from app.temps1.pipeline import traiter_facture
+from app.temps2.schemas import RetroExtrait
+from app.temps2.traitement_retro import traiter_retro
 
 TEMPLATES = Jinja2Templates(directory="app/ui/templates")
 
@@ -17,6 +19,13 @@ TEMPLATES = Jinja2Templates(directory="app/ui/templates")
 def get_extractor():
     cfg = charger_config()
     return ClaudeExtractor(cfg.get("anthropic_api_key", ""))
+
+
+def get_retro_extractor():
+    cfg = charger_config()
+    return ClaudeExtractor(cfg.get("anthropic_api_key", ""),
+                           prompt_path="prompts/extraction_retro.txt",
+                           output_format=RetroExtrait)
 
 
 def creer_app(db_path="data/retrocession.db") -> FastAPI:
@@ -106,6 +115,52 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
     def import_base(fichier: UploadFile):
         Path(app.state.db_path).write_bytes(fichier.file.read())
         return RedirectResponse("/factures", status_code=303)
+
+    def _nombre_retro():
+        return conn().execute("SELECT COUNT(*) n FROM retro_documents").fetchone()["n"]
+
+    def _cout_total_retro():
+        v = conn().execute(
+            "SELECT COALESCE(SUM(cout_estime), 0) c FROM retro_documents").fetchone()["c"]
+        return round(v, 4)
+
+    def _ingerer_retro_un(fichier, extractor):
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+            tmp.write(fichier.file.read())
+            chemin = tmp.name
+        try:
+            pdf = lire_pdf(chemin)
+            pdf.nom = fichier.filename or pdf.nom
+            res = traiter_retro(conn(), pdf, extractor, app.state.config)
+            out = {"n_lignes": res.n_lignes, "n_resolu": res.n_resolu,
+                   "n_rouge": res.n_rouge, "cout": round(res.cout, 5)}
+        except Exception as e:
+            out = {"n_lignes": 0, "n_resolu": 0, "n_rouge": 0, "cout": 0.0,
+                   "erreur": f"extraction impossible : {e}"}
+        finally:
+            Path(chemin).unlink(missing_ok=True)
+        out.update({"fichier": fichier.filename,
+                    "n_total": _nombre_retro(), "cout_total": _cout_total_retro()})
+        return out
+
+    @app.get("/retro", response_class=HTMLResponse)
+    def retro(request: Request):
+        return TEMPLATES.TemplateResponse(
+            request, "retro.html",
+            {"n_total": _nombre_retro(), "cout_total": _cout_total_retro()})
+
+    @app.post("/retro/ingest-un")
+    def retro_ingest_un(fichier: UploadFile, extractor=Depends(get_retro_extractor)):
+        return _ingerer_retro_un(fichier, extractor)
+
+    @app.get("/retro-lignes", response_class=HTMLResponse)
+    def retro_lignes(request: Request):
+        rows = conn().execute(
+            "SELECT d.numero, l.bl_numero, l.bl_date, l.designation, l.code, l.qte, "
+            "l.tva, l.prix_net, l.statut_ecart "
+            "FROM retro_lignes l JOIN retro_documents d ON d.id = l.retro_id "
+            "ORDER BY l.id").fetchall()
+        return TEMPLATES.TemplateResponse(request, "retro_lignes.html", {"rows": rows})
 
     @app.get("/favicon.ico", include_in_schema=False)
     def favicon_ico():
