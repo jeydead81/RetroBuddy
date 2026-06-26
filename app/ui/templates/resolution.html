@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block contenu %}
+<h1>Résolution des écarts</h1>
+<p>
+  <strong class="en_revue">À compléter (rouge) : {{ compteurs.rouge }}</strong> ·
+  À confirmer (orange) : {{ compteurs.a_confirmer }} ·
+  Auto-validées : {{ compteurs.auto }} ·
+  <button onclick="rematch()">Re-rapprocher</button>
+</p>
+<div class="barre-fond">
+  <div class="barre-jauge" style="width: {{ (100 * compteurs.auto / compteurs.total) if compteurs.total else 0 }}%"></div>
+</div>
+
+<table id="table-resolution">
+  <tr>
+    <th>Désignation LGO</th><th>Code</th><th>Qté</th><th>BL</th><th>Date BL</th>
+    <th>Candidat (score)</th><th>PA brut</th><th>Remise %</th><th>UG</th><th>PA net</th>
+    <th>Statut</th><th>Action</th>
+  </tr>
+  {% for r in rows %}
+  <tr data-id="{{ r['id'] }}" class="ligne {{ r['statut_ecart'] }}">
+    <td>{{ r["designation"] }}</td>
+    <td>{{ r["code"] }}</td>
+    <td>{{ r["qte"] }}</td>
+    <td>{{ r["bl_numero"] }}</td>
+    <td>{{ r["bl_date"] }}</td>
+    <td>{% if r["statut_ecart"] == "orange" %}{{ r["code_resolu"] }} ({{ "%.2f"|format(r["score_match"] or 0) }}){% endif %}</td>
+    <td><input class="f-brut" type="number" step="0.001" value="{{ r['prix_brut'] if r['prix_brut'] is not none else '' }}"></td>
+    <td><input class="f-remise" type="number" step="0.01" value="{{ r['remise_pct'] if r['remise_pct'] is not none else '' }}"></td>
+    <td><input class="f-ug" type="number" step="1" value="{{ r['ug'] if r['ug'] is not none else 0 }}"></td>
+    <td><input class="f-net" type="number" step="0.001" value="{{ r['prix_net'] if r['prix_net'] is not none else '' }}"></td>
+    <td class="statut {{ r['statut_ecart'] }}">{{ r["statut_ecart"] }}{% if r["valide_utilisateur"] %} ✓{% endif %}</td>
+    <td>
+      {% if r["statut_ecart"] == "orange" %}
+        <button onclick="accepter({{ r['id'] }})">Accepter</button>
+        <button onclick="refuser({{ r['id'] }})">Refuser</button>
+      {% else %}
+        <button onclick="enregistrer({{ r['id'] }})">Enregistrer</button>
+      {% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+
+<script>
+function valeur(tr, cls) {
+  const v = tr.querySelector(cls).value;
+  return v === "" ? null : parseFloat(v);
+}
+async function enregistrer(id) {
+  const tr = document.querySelector(`tr[data-id="${id}"]`);
+  const payload = {
+    prix_brut: valeur(tr, ".f-brut"), remise_pct: valeur(tr, ".f-remise"),
+    ug: valeur(tr, ".f-ug") || 0, prix_net: valeur(tr, ".f-net")
+  };
+  const r = await fetch(`/resolution/ligne/${id}`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+  const d = await r.json();
+  tr.querySelector(".f-net").value = d.prix_net != null ? d.prix_net : "";
+  tr.querySelector(".statut").textContent = d.statut_ecart + (d.valide_utilisateur ? " ✓" : "");
+}
+document.querySelectorAll("#table-resolution tr[data-id]").forEach(tr => {
+  ["change"].forEach(ev => tr.addEventListener(ev, e => {
+    if (!e.target.matches(".f-brut, .f-remise, .f-ug")) return;
+    const qte = parseFloat(tr.querySelector("td:nth-child(3)").textContent) || 0;
+    const brut = valeur(tr, ".f-brut"), remise = valeur(tr, ".f-remise") || 0, ug = valeur(tr, ".f-ug") || 0;
+    if (brut != null && (qte + ug) > 0)
+      tr.querySelector(".f-net").value = (qte * brut * (1 - remise / 100) / (qte + ug)).toFixed(4);
+  }));
+});
+async function accepter(id) { await fetch(`/resolution/ligne/${id}/accepter`, { method: "POST" }); location.reload(); }
+async function refuser(id) { await fetch(`/resolution/ligne/${id}/refuser`, { method: "POST" }); location.reload(); }
+async function rematch() { await fetch(`/resolution/rematch`, { method: "POST" }); location.reload(); }
+</script>
+{% endblock %}

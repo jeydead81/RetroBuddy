@@ -12,6 +12,8 @@ from app.temps1.pdf_reader import lire_pdf
 from app.temps1.pipeline import traiter_facture
 from app.temps2.schemas import RetroExtrait
 from app.temps2.traitement_retro import traiter_retro
+from app.temps3 import resolution as resolution_logique
+from app.temps3.rematch import rematcher
 
 TEMPLATES = Jinja2Templates(directory="app/ui/templates")
 
@@ -161,6 +163,45 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
             "FROM retro_lignes l JOIN retro_documents d ON d.id = l.retro_id "
             "ORDER BY l.id").fetchall()
         return TEMPLATES.TemplateResponse(request, "retro_lignes.html", {"rows": rows})
+
+    @app.get("/resolution", response_class=HTMLResponse)
+    def resolution(request: Request):
+        rows = conn().execute(
+            "SELECT l.id, l.designation, l.code, l.code_resolu, l.qte, l.tva, "
+            "l.bl_numero, l.bl_date, l.prix_brut, l.remise_pct, l.prix_net, l.ug, "
+            "l.score_match, l.statut_ecart, l.valide_utilisateur "
+            "FROM retro_lignes l "
+            "WHERE l.statut_ecart IN ('rouge', 'orange') ORDER BY l.id").fetchall()
+        n_rouge = sum(1 for r in rows if r["statut_ecart"] == "rouge")
+        n_orange_a_confirmer = sum(
+            1 for r in rows if r["statut_ecart"] == "orange" and not r["valide_utilisateur"])
+        n_auto = sum(
+            1 for r in rows if r["statut_ecart"] == "orange" and r["valide_utilisateur"])
+        compteurs = {"rouge": n_rouge, "a_confirmer": n_orange_a_confirmer,
+                     "auto": n_auto, "total": len(rows)}
+        return TEMPLATES.TemplateResponse(
+            request, "resolution.html", {"rows": rows, "compteurs": compteurs})
+
+    @app.post("/resolution/ligne/{ligne_id}")
+    def resolution_enregistrer(ligne_id: int, payload: dict):
+        return resolution_logique.enregistrer_ligne(
+            conn(), ligne_id,
+            prix_brut=payload.get("prix_brut"), remise_pct=payload.get("remise_pct"),
+            prix_net=payload.get("prix_net"), ug=payload.get("ug", 0))
+
+    @app.post("/resolution/ligne/{ligne_id}/accepter")
+    def resolution_accepter(ligne_id: int):
+        resolution_logique.accepter_orange(conn(), ligne_id)
+        return {"ok": True}
+
+    @app.post("/resolution/ligne/{ligne_id}/refuser")
+    def resolution_refuser(ligne_id: int):
+        resolution_logique.refuser_orange(conn(), ligne_id)
+        return {"ok": True}
+
+    @app.post("/resolution/rematch")
+    def resolution_rematch():
+        return rematcher(conn(), app.state.config)
 
     @app.get("/favicon.ico", include_in_schema=False)
     def favicon_ico():
