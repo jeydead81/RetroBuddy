@@ -107,6 +107,14 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
         Path(app.state.db_path).write_bytes(fichier.file.read())
         return RedirectResponse("/factures", status_code=303)
 
+    @app.get("/favicon.ico", include_in_schema=False)
+    def favicon_ico():
+        return FileResponse("app/ui/static/retrobuddy.ico")
+
+    @app.get("/favicon.png", include_in_schema=False)
+    def favicon_png():
+        return FileResponse("app/ui/static/favicon.png")
+
     return app
 
 
