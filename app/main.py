@@ -14,6 +14,7 @@ from app.temps2.schemas import RetroExtrait
 from app.temps2.traitement_retro import traiter_retro
 from app.temps3 import resolution as resolution_logique
 from app.temps3.rematch import rematcher
+from app.jobs import RegistreJobs, lancer_job
 
 TEMPLATES = Jinja2Templates(directory="app/ui/templates")
 
@@ -34,6 +35,8 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
     app = FastAPI(title="RetroBuddy")
     app.state.db_path = db_path
     app.state.config = charger_config()
+    app.state.jobs = RegistreJobs()
+    app.state.jobs_retro = RegistreJobs()
 
     init_db(get_connection(db_path))
 
@@ -202,6 +205,72 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
     @app.post("/resolution/rematch")
     def resolution_rematch():
         return rematcher(conn(), app.state.config)
+
+    def _enregistrer_temp(fichiers):
+        paires = []
+        for f in fichiers:
+            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+                tmp.write(f.file.read())
+                chemin = tmp.name
+            paires.append((f.filename, chemin))
+        return paires
+
+    def _traiter_fichier_labo(nom, chemin, extractor):
+        try:
+            pdf = lire_pdf(chemin)
+            pdf.nom = nom
+            res = traiter_facture(conn(), pdf, extractor, app.state.config)
+            out = {"statut": res.statut, "motif": res.motif,
+                   "n_referentiel": res.n_referentiel, "cout": round(res.cout, 5)}
+        except Exception as e:
+            out = {"statut": "erreur", "motif": f"extraction impossible : {e}",
+                   "n_referentiel": 0, "cout": 0.0}
+        finally:
+            Path(chemin).unlink(missing_ok=True)
+        out.update({"fichier": nom, "n_total": _nombre_factures(), "cout_total": _cout_total()})
+        return out
+
+    def _traiter_fichier_retro(nom, chemin, extractor):
+        try:
+            pdf = lire_pdf(chemin)
+            pdf.nom = nom
+            res = traiter_retro(conn(), pdf, extractor, app.state.config)
+            out = {"statut": "ok", "n_lignes": res.n_lignes, "n_resolu": res.n_resolu,
+                   "n_orange": res.n_orange, "n_rouge": res.n_rouge, "cout": round(res.cout, 5)}
+        except Exception as e:
+            out = {"statut": "erreur", "motif": f"extraction impossible : {e}",
+                   "n_lignes": 0, "n_resolu": 0, "n_orange": 0, "n_rouge": 0, "cout": 0.0}
+        finally:
+            Path(chemin).unlink(missing_ok=True)
+        out.update({"fichier": nom, "n_total": _nombre_retro(),
+                    "cout_total": _cout_total_retro()})
+        return out
+
+    @app.post("/ingest/start")
+    def ingest_start(fichiers: list[UploadFile], extractor=Depends(get_extractor)):
+        paires = _enregistrer_temp(fichiers)
+        job_id = app.state.jobs.creer(len(paires))
+        lancer_job(app.state.jobs, job_id, paires,
+                   lambda n, c: _traiter_fichier_labo(n, c, extractor))
+        return {"job_id": job_id, "total": len(paires)}
+
+    @app.get("/ingest/progress/{job_id}")
+    def ingest_progress(job_id: str):
+        j = app.state.jobs.lire(job_id)
+        return j if j is not None else {"introuvable": True}
+
+    @app.post("/retro/ingest/start")
+    def retro_start(fichiers: list[UploadFile], extractor=Depends(get_retro_extractor)):
+        paires = _enregistrer_temp(fichiers)
+        job_id = app.state.jobs_retro.creer(len(paires))
+        lancer_job(app.state.jobs_retro, job_id, paires,
+                   lambda n, c: _traiter_fichier_retro(n, c, extractor))
+        return {"job_id": job_id, "total": len(paires)}
+
+    @app.get("/retro/progress/{job_id}")
+    def retro_progress(job_id: str):
+        j = app.state.jobs_retro.lire(job_id)
+        return j if j is not None else {"introuvable": True}
 
     @app.get("/favicon.ico", include_in_schema=False)
     def favicon_ico():

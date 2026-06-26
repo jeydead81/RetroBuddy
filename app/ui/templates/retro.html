@@ -6,7 +6,7 @@
    Coût cumulé : $<strong id="cout-base">{{ "%.4f"|format(cout_total or 0) }}</strong></p>
 
 <form id="form-retro" action="/retro/ingest-un" method="post" enctype="multipart/form-data">
-  <input id="input-fichiers" type="file" name="fichier" accept="application/pdf" multiple required>
+  <input id="input-fichiers" type="file" name="fichiers" accept="application/pdf" multiple required>
   <button id="btn-retro" type="submit">Ingérer</button>
 </form>
 
@@ -24,58 +24,54 @@
 (function () {
   const form = document.getElementById("form-retro");
   const input = document.getElementById("input-fichiers");
-  const td = (txt, cls) => {
-    const c = document.createElement("td");
-    c.textContent = txt; if (cls) c.className = cls; return c;
-  };
+  const CLE = "retrobuddy_job_retro";
+  const td = (txt, cls) => { const c = document.createElement("td"); c.textContent = txt; if (cls) c.className = cls; return c; };
 
-  form.addEventListener("submit", async function (e) {
-    e.preventDefault();
-    const files = Array.from(input.files);
-    if (!files.length) return;
-    const N = files.length;
-    const compteur = document.getElementById("compteur");
-    const barre = document.getElementById("barre");
+  function rendre(j) {
     const liste = document.getElementById("liste");
-    let coutLot = 0, resolu = 0, rouge = 0;
-
-    document.getElementById("progress").style.display = "block";
     liste.innerHTML = "";
-    document.getElementById("btn-retro").disabled = true;
-    compteur.textContent = "0 / " + N;
-    barre.style.width = "0%";
-
-    for (let i = 0; i < N; i++) {
-      const fd = new FormData();
-      fd.append("fichier", files[i]);
-      let r;
-      try {
-        const resp = await fetch("/retro/ingest-un", { method: "POST", body: fd });
-        r = await resp.json();
-      } catch (err) {
-        r = { fichier: files[i].name, n_lignes: 0, n_resolu: 0, n_rouge: 0, cout: 0 };
-      }
-      coutLot += (r.cout || 0); resolu += (r.n_resolu || 0); rouge += (r.n_rouge || 0);
+    let cout = 0, resolu = 0, rouge = 0;
+    for (const r of j.details) {
+      cout += (r.cout || 0); resolu += (r.n_resolu || 0); rouge += (r.n_rouge || 0);
       if (r.n_total != null) document.getElementById("n-base").textContent = r.n_total;
-      if (r.cout_total != null)
-        document.getElementById("cout-base").textContent = Number(r.cout_total).toFixed(4);
-
+      if (r.cout_total != null) document.getElementById("cout-base").textContent = Number(r.cout_total).toFixed(4);
       const tr = document.createElement("tr");
-      tr.appendChild(td(r.fichier || files[i].name));
+      tr.appendChild(td(r.fichier));
       tr.appendChild(td(String(r.n_lignes || 0)));
       tr.appendChild(td(String(r.n_resolu || 0), "ingeree"));
       tr.appendChild(td(String(r.n_rouge || 0), "en_revue"));
       tr.appendChild(td((r.cout || 0).toFixed(5)));
       liste.appendChild(tr);
-
-      compteur.textContent = (i + 1) + " / " + N;
-      barre.style.width = Math.round((i + 1) / N * 100) + "%";
-      document.getElementById("recap").textContent =
-        "Résolues " + resolu + " · Rouges " + rouge +
-        " · Coût du lot : $" + coutLot.toFixed(4);
     }
-    document.getElementById("btn-retro").disabled = false;
+    document.getElementById("compteur").textContent = j.fait + " / " + j.total;
+    document.getElementById("barre").style.width = (j.total ? Math.round(100 * j.fait / j.total) : 0) + "%";
+    document.getElementById("recap").textContent =
+      "Résolues " + resolu + " · Rouges " + rouge + " · Coût du lot : $" + cout.toFixed(4);
+  }
+
+  async function suivre(jobId) {
+    document.getElementById("progress").style.display = "block";
+    while (true) {
+      const j = await (await fetch("/retro/progress/" + jobId)).json();
+      if (j.introuvable) { localStorage.removeItem(CLE); return; }
+      rendre(j);
+      if (j.termine) { localStorage.removeItem(CLE); return; }
+      await new Promise(r => setTimeout(r, 1000));
+    }
+  }
+
+  form.addEventListener("submit", async function (e) {
+    e.preventDefault();
+    if (!input.files.length) return;
+    const fd = new FormData();
+    for (const f of input.files) fd.append("fichiers", f);
+    const r = await (await fetch("/retro/ingest/start", { method: "POST", body: fd })).json();
+    localStorage.setItem(CLE, r.job_id);
+    suivre(r.job_id);
   });
+
+  const enCours = localStorage.getItem(CLE);
+  if (enCours) suivre(enCours);
 })();
 </script>
 {% endblock %}

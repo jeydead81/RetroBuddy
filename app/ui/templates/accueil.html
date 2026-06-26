@@ -43,73 +43,54 @@
 (function () {
   const form = document.getElementById("form-ingest");
   const input = document.getElementById("input-fichiers");
+  const CLE = "retrobuddy_job_ingest";
+  const td = (txt, cls) => { const c = document.createElement("td"); c.textContent = txt; if (cls) c.className = cls; return c; };
 
-  function maj_recap(t, coutLot) {
+  function rendre(j) {
+    const t = { ingeree: 0, ignoree: 0, en_revue: 0, erreur: 0 };
+    const liste = document.getElementById("liste");
+    liste.innerHTML = "";
+    let cout = 0;
+    for (const r of j.details) {
+      t[r.statut] = (t[r.statut] || 0) + 1;
+      cout += (r.cout || 0);
+      if (r.n_total != null) document.getElementById("n-base").textContent = r.n_total;
+      if (r.cout_total != null) document.getElementById("cout-base").textContent = Number(r.cout_total).toFixed(4);
+      const tr = document.createElement("tr");
+      tr.appendChild(td(r.fichier)); tr.appendChild(td(r.statut, r.statut));
+      tr.appendChild(td((r.cout || 0).toFixed(5))); tr.appendChild(td(r.motif || ""));
+      liste.appendChild(tr);
+    }
+    document.getElementById("compteur").textContent = j.fait + " / " + j.total;
+    document.getElementById("barre").style.width = (j.total ? Math.round(100 * j.fait / j.total) : 0) + "%";
     document.getElementById("recap").textContent =
-      "Ingérées " + t.ingeree + " · Ignorées " + t.ignoree +
-      " · En revue " + t.en_revue + " · Erreurs " + t.erreur +
-      " · Coût du lot : $" + coutLot.toFixed(4);
+      "Ingérées " + t.ingeree + " · Ignorées " + t.ignoree + " · En revue " + t.en_revue +
+      " · Erreurs " + t.erreur + " · Coût du lot : $" + cout.toFixed(4);
+  }
+
+  async function suivre(jobId) {
+    document.getElementById("progress").style.display = "block";
+    while (true) {
+      const j = await (await fetch("/ingest/progress/" + jobId)).json();
+      if (j.introuvable) { localStorage.removeItem(CLE); return; }
+      rendre(j);
+      if (j.termine) { localStorage.removeItem(CLE); return; }
+      await new Promise(r => setTimeout(r, 1000));
+    }
   }
 
   form.addEventListener("submit", async function (e) {
-    e.preventDefault();                       // on intercepte : ingestion fichier par fichier
-    const files = Array.from(input.files);
-    if (!files.length) return;
-    const N = files.length;
-
-    const btn = document.getElementById("btn-ingest");
-    const compteur = document.getElementById("compteur");
-    const barre = document.getElementById("barre");
-    const liste = document.getElementById("liste");
-    const t = { ingeree: 0, ignoree: 0, en_revue: 0, erreur: 0 };
-    let coutLot = 0;
-
-    document.getElementById("progress").style.display = "block";
-    liste.innerHTML = "";
-    btn.disabled = true;
-    compteur.textContent = "0 / " + N;
-    barre.style.width = "0%";
-    maj_recap(t, coutLot);
-
-    const td = (txt, cls) => {
-      const c = document.createElement("td");
-      c.textContent = txt || "";
-      if (cls) c.className = cls;
-      return c;
-    };
-
-    for (let i = 0; i < N; i++) {
-      const fd = new FormData();
-      fd.append("fichier", files[i]);
-      let r;
-      try {
-        const resp = await fetch("/ingest-un", { method: "POST", body: fd });
-        r = await resp.json();
-        if (!resp.ok) r = { fichier: files[i].name, statut: "erreur", motif: "HTTP " + resp.status };
-      } catch (err) {
-        r = { fichier: files[i].name, statut: "erreur", motif: String(err) };
-      }
-
-      t[r.statut] = (t[r.statut] || 0) + 1;
-      coutLot += (r.cout || 0);
-      if (r.n_total != null) document.getElementById("n-base").textContent = r.n_total;
-      if (r.cout_total != null)
-        document.getElementById("cout-base").textContent = Number(r.cout_total).toFixed(4);
-
-      const tr = document.createElement("tr");
-      tr.appendChild(td(r.fichier || files[i].name));
-      tr.appendChild(td(r.statut, r.statut));
-      tr.appendChild(td((r.cout || 0).toFixed(5)));
-      tr.appendChild(td(r.motif));
-      liste.appendChild(tr);
-
-      compteur.textContent = (i + 1) + " / " + N;
-      barre.style.width = Math.round((i + 1) / N * 100) + "%";
-      maj_recap(t, coutLot);
-    }
-
-    btn.disabled = false;
+    e.preventDefault();
+    if (!input.files.length) return;
+    const fd = new FormData();
+    for (const f of input.files) fd.append("fichiers", f);
+    const r = await (await fetch("/ingest/start", { method: "POST", body: fd })).json();
+    localStorage.setItem(CLE, r.job_id);
+    suivre(r.job_id);
   });
+
+  const enCours = localStorage.getItem(CLE);
+  if (enCours) suivre(enCours);
 })();
 </script>
 {% endblock %}
