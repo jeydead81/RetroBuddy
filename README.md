@@ -28,8 +28,8 @@ l'autre.
 |-------|------|--------|
 | **1** | Référentiel prix : ingestion des **factures labo** (PDF) → classification → extraction IA → garde-fous → référentiel prix historisé. | ✅ Terminé |
 | **2** | Ingestion de la **facture LGO de rétrocession** → matching par code (passes 1-2) → calcul « dernier prix net ≤ date du BL ». | ✅ Terminé |
-| **3** | Résolution des écarts : tableau type Excel, compteurs, couleurs rouge/orange, édition inline, matching par désignation (passes 3-5). | ⏳ À venir |
-| **4** | Édition de la facture de rétrocession (PDF calqué LGO + Excel), export bloqué tant qu'une ligne rouge subsiste. | ⏳ À venir |
+| **3** | Résolution des écarts : tableau type Excel, compteurs, couleurs rouge/orange, édition inline, matching par **désignation** (passes 3-4), ingestion en tâche de fond. | ✅ Terminé |
+| **4** | Édition de la facture de rétrocession (PDF calqué LGO + Excel), export bloqué tant qu'une ligne rouge subsiste ; passe 5 (relecture IA). | ⏳ À venir |
 
 Cadrage métier complet : [`CADRAGE_RETROCESSION.md`](CADRAGE_RETROCESSION.md).
 Specs & plans d'implémentation : [`docs/superpowers/`](docs/superpowers/).
@@ -77,6 +77,10 @@ Onglets :
 - **Factures** — statut de chaque facture (ingérée / ignorée / en revue) avec le motif.
 - **Rétrocession** — déposer la facture LGO. Compteur + coût.
 - **Lignes rétro** — chaque ligne rapprochée (resolu) ou signalée (rouge), par BL.
+- **Résolution** — les lignes à compléter (rouge) / à confirmer (orange) : édition inline, accepter/refuser un candidat par désignation, « Re-rapprocher ».
+
+> L'ingestion (labo et LGO) tourne **côté serveur** : changer d'onglet pendant un import
+> ne l'annule pas ; en revenant sur la page, la progression est toujours là.
 
 > Le matching cherche dans le référentiel : pour obtenir des rapprochements, ingérer d'abord les
 > factures labo correspondantes, puis la facture LGO.
