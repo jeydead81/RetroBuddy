@@ -29,28 +29,49 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
     def conn():
         return get_connection(app.state.db_path)
 
+    def _nombre_factures():
+        return conn().execute("SELECT COUNT(*) n FROM factures").fetchone()["n"]
+
+    def _ingerer_un(fichier: UploadFile, extractor):
+        """Traite UN PDF et renvoie un dict JSON-able."""
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+            tmp.write(fichier.file.read())
+            chemin = tmp.name
+        try:
+            pdf = lire_pdf(chemin)
+            pdf.nom = fichier.filename or pdf.nom
+            res = traiter_facture(conn(), pdf, extractor, app.state.config)
+            statut, motif, n_ref = res.statut, res.motif, res.n_referentiel
+        except Exception as e:  # un PDF qui échoue ne doit pas casser le lot
+            statut, motif, n_ref = "erreur", f"extraction impossible : {e}", 0
+        finally:
+            Path(chemin).unlink(missing_ok=True)
+        return {"fichier": fichier.filename, "statut": statut, "motif": motif,
+                "n_referentiel": n_ref, "n_total": _nombre_factures()}
+
     @app.get("/", response_class=HTMLResponse)
     def accueil(request: Request):
-        return TEMPLATES.TemplateResponse(request, "accueil.html", {})
+        return TEMPLATES.TemplateResponse(
+            request, "accueil.html", {"n_total": _nombre_factures()})
+
+    @app.post("/ingest-un")
+    def ingest_un(fichier: UploadFile, extractor=Depends(get_extractor)):
+        """Ingestion d'un seul PDF (appelé en boucle par le JS pour la barre X/N)."""
+        return _ingerer_un(fichier, extractor)
 
     @app.post("/ingest", response_class=HTMLResponse)
     def ingest(request: Request, fichiers: list[UploadFile],
                extractor=Depends(get_extractor)):
-        c = conn()
-        recap = {"ingeree": 0, "ignoree": 0, "en_revue": 0}
+        # Chemin de repli sans JS : traite tout le lot d'un coup.
+        recap = {"ingeree": 0, "ignoree": 0, "en_revue": 0, "erreur": 0}
         details = []
         for f in fichiers:
-            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
-                tmp.write(f.file.read())
-                chemin = tmp.name
-            pdf = lire_pdf(chemin)
-            pdf.nom = f.filename or pdf.nom
-            res = traiter_facture(c, pdf, extractor, app.state.config)
-            recap[res.statut] = recap.get(res.statut, 0) + 1
-            details.append((f.filename, res.statut, res.motif))
-            Path(chemin).unlink(missing_ok=True)
+            r = _ingerer_un(f, extractor)
+            recap[r["statut"]] = recap.get(r["statut"], 0) + 1
+            details.append((r["fichier"], r["statut"], r["motif"]))
         return TEMPLATES.TemplateResponse(
-            request, "accueil.html", {"recap": recap, "details": details})
+            request, "accueil.html",
+            {"recap": recap, "details": details, "n_total": _nombre_factures()})
 
     @app.get("/referentiel", response_class=HTMLResponse)
     def referentiel(request: Request):

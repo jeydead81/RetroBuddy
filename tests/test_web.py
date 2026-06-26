@@ -38,3 +38,27 @@ def test_ingest_ajoute_au_referentiel(tmp_path):
     assert "ingérée" in r.text or "ingeree" in r.text.lower()
     ref = client.get("/referentiel")
     assert "3400930000007" in ref.text
+
+
+def test_ingest_un_renvoie_json(tmp_path):
+    client = _client(tmp_path)
+    files = {"fichier": ("f.pdf", b"%PDF-1.4 fake", "application/pdf")}
+    r = client.post("/ingest-un", files=files)
+    assert r.status_code == 200
+    data = r.json()
+    assert data["statut"] == "ingeree"
+    assert data["fichier"] == "f.pdf"
+    assert data["n_total"] == 1
+
+
+def test_ingest_un_compteur_total_incremente(tmp_path):
+    client = _client(tmp_path)
+    f = {"fichier": ("f.pdf", b"%PDF-1.4 fake", "application/pdf")}
+    assert client.post("/ingest-un", files=f).json()["n_total"] == 1
+    assert client.post("/ingest-un", files=f).json()["n_total"] == 2
+
+
+def test_accueil_affiche_total_en_base(tmp_path):
+    client = _client(tmp_path)
+    client.post("/ingest-un", files={"fichier": ("f.pdf", b"%PDF", "application/pdf")})
+    assert "déjà en base" in client.get("/").text.lower()

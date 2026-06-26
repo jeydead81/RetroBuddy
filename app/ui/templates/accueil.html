@@ -1,16 +1,32 @@
 {% extends "base.html" %}
 {% block contenu %}
 <h1>Import factures labo</h1>
-<form action="/ingest" method="post" enctype="multipart/form-data">
-  <input type="file" name="fichiers" accept="application/pdf" multiple required>
-  <button type="submit">Ingérer</button>
+
+<p>Déjà en base : <strong id="n-base">{{ n_total }}</strong> factures.</p>
+
+<form id="form-ingest" action="/ingest" method="post" enctype="multipart/form-data">
+  <input id="input-fichiers" type="file" name="fichiers" accept="application/pdf" multiple required>
+  <button id="btn-ingest" type="submit">Ingérer</button>
 </form>
+
+<div id="progress" style="display:none; margin-top:1rem;">
+  <p>Progression : <span id="compteur">0 / 0</span></p>
+  <div class="barre-fond"><div id="barre" class="barre-jauge"></div></div>
+  <p id="recap"></p>
+  <table>
+    <tr><th>Fichier</th><th>Statut</th><th>Motif</th></tr>
+    <tbody id="liste"></tbody>
+  </table>
+</div>
+
 {% if recap %}
+  {# Repli sans JS : récap rendu côté serveur après /ingest #}
   <h2>Résultat</h2>
   <ul>
     <li class="ingeree">Ingérées : {{ recap.get("ingeree", 0) }}</li>
     <li class="ignoree">Ignorées : {{ recap.get("ignoree", 0) }}</li>
     <li class="en_revue">En revue : {{ recap.get("en_revue", 0) }}</li>
+    <li class="erreur">Erreurs : {{ recap.get("erreur", 0) }}</li>
   </ul>
   <table>
     <tr><th>Fichier</th><th>Statut</th><th>Motif</th></tr>
@@ -19,4 +35,71 @@
     {% endfor %}
   </table>
 {% endif %}
+
+<script>
+(function () {
+  const form = document.getElementById("form-ingest");
+  const input = document.getElementById("input-fichiers");
+
+  function maj_recap(t) {
+    document.getElementById("recap").textContent =
+      "Ingérées " + t.ingeree + " · Ignorées " + t.ignoree +
+      " · En revue " + t.en_revue + " · Erreurs " + t.erreur;
+  }
+
+  form.addEventListener("submit", async function (e) {
+    e.preventDefault();                       // on intercepte : ingestion fichier par fichier
+    const files = Array.from(input.files);
+    if (!files.length) return;
+    const N = files.length;
+
+    const btn = document.getElementById("btn-ingest");
+    const compteur = document.getElementById("compteur");
+    const barre = document.getElementById("barre");
+    const liste = document.getElementById("liste");
+    const t = { ingeree: 0, ignoree: 0, en_revue: 0, erreur: 0 };
+
+    document.getElementById("progress").style.display = "block";
+    liste.innerHTML = "";
+    btn.disabled = true;
+    compteur.textContent = "0 / " + N;
+    barre.style.width = "0%";
+    maj_recap(t);
+
+    for (let i = 0; i < N; i++) {
+      const fd = new FormData();
+      fd.append("fichier", files[i]);
+      let r;
+      try {
+        const resp = await fetch("/ingest-un", { method: "POST", body: fd });
+        r = await resp.json();
+        if (!resp.ok) r = { fichier: files[i].name, statut: "erreur", motif: "HTTP " + resp.status };
+      } catch (err) {
+        r = { fichier: files[i].name, statut: "erreur", motif: String(err) };
+      }
+
+      t[r.statut] = (t[r.statut] || 0) + 1;
+      if (r.n_total != null) document.getElementById("n-base").textContent = r.n_total;
+
+      const tr = document.createElement("tr");
+      const td = (txt, cls) => {
+        const c = document.createElement("td");
+        c.textContent = txt || "";
+        if (cls) c.className = cls;
+        return c;
+      };
+      tr.appendChild(td(r.fichier || files[i].name));
+      tr.appendChild(td(r.statut, r.statut));
+      tr.appendChild(td(r.motif));
+      liste.appendChild(tr);
+
+      compteur.textContent = (i + 1) + " / " + N;
+      barre.style.width = Math.round((i + 1) / N * 100) + "%";
+      maj_recap(t);
+    }
+
+    btn.disabled = false;
+  });
+})();
+</script>
 {% endblock %}
