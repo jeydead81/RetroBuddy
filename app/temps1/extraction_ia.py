@@ -36,13 +36,15 @@ class ExtractionError(RuntimeError):
 class ClaudeExtractor:
     """Extracteur réel : envoie le PDF à Claude (lecture native) avec sortie structurée."""
 
-    def __init__(self, api_key: str, prompt_path="prompts/extraction_facture.txt"):
+    def __init__(self, api_key: str, prompt_path="prompts/extraction_facture.txt",
+                 output_format=FactureExtraite):
         self._client = anthropic.Anthropic(api_key=api_key)
         self._prompt = Path(prompt_path).read_text(encoding="utf-8")
-        self.dernier_cout = 0.0   # coût $ du dernier appel
-        self.cout_cumule = 0.0    # coût $ depuis la création de l'extracteur
+        self._output_format = output_format
+        self.dernier_cout = 0.0
+        self.cout_cumule = 0.0
 
-    def extraire(self, pdf: PdfDocument, model: str) -> FactureExtraite:
+    def extraire(self, pdf: PdfDocument, model: str):
         resp = self._client.messages.parse(
             model=model,
             max_tokens=16000,
@@ -57,7 +59,7 @@ class ClaudeExtractor:
                     {"type": "text", "text": "Extrais cette facture selon le schéma."},
                 ],
             }],
-            output_format=FactureExtraite,
+            output_format=self._output_format,
         )
         self.dernier_cout = cout_appel(model, resp.usage)
         self.cout_cumule += self.dernier_cout
