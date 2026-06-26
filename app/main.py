@@ -32,6 +32,11 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
     def _nombre_factures():
         return conn().execute("SELECT COUNT(*) n FROM factures").fetchone()["n"]
 
+    def _cout_total():
+        v = conn().execute(
+            "SELECT COALESCE(SUM(cout_estime), 0) c FROM factures").fetchone()["c"]
+        return round(v, 4)
+
     def _ingerer_un(fichier: UploadFile, extractor):
         """Traite UN PDF et renvoie un dict JSON-able."""
         with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
@@ -41,18 +46,20 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
             pdf = lire_pdf(chemin)
             pdf.nom = fichier.filename or pdf.nom
             res = traiter_facture(conn(), pdf, extractor, app.state.config)
-            statut, motif, n_ref = res.statut, res.motif, res.n_referentiel
+            statut, motif, n_ref, cout = res.statut, res.motif, res.n_referentiel, res.cout
         except Exception as e:  # un PDF qui échoue ne doit pas casser le lot
-            statut, motif, n_ref = "erreur", f"extraction impossible : {e}", 0
+            statut, motif, n_ref, cout = "erreur", f"extraction impossible : {e}", 0, 0.0
         finally:
             Path(chemin).unlink(missing_ok=True)
         return {"fichier": fichier.filename, "statut": statut, "motif": motif,
-                "n_referentiel": n_ref, "n_total": _nombre_factures()}
+                "n_referentiel": n_ref, "cout": round(cout, 5),
+                "n_total": _nombre_factures(), "cout_total": _cout_total()}
 
     @app.get("/", response_class=HTMLResponse)
     def accueil(request: Request):
         return TEMPLATES.TemplateResponse(
-            request, "accueil.html", {"n_total": _nombre_factures()})
+            request, "accueil.html",
+            {"n_total": _nombre_factures(), "cout_total": _cout_total()})
 
     @app.post("/ingest-un")
     def ingest_un(fichier: UploadFile, extractor=Depends(get_extractor)):
@@ -65,13 +72,16 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
         # Chemin de repli sans JS : traite tout le lot d'un coup.
         recap = {"ingeree": 0, "ignoree": 0, "en_revue": 0, "erreur": 0}
         details = []
+        cout_lot = 0.0
         for f in fichiers:
             r = _ingerer_un(f, extractor)
             recap[r["statut"]] = recap.get(r["statut"], 0) + 1
-            details.append((r["fichier"], r["statut"], r["motif"]))
+            details.append((r["fichier"], r["statut"], r["motif"], r["cout"]))
+            cout_lot += r["cout"]
         return TEMPLATES.TemplateResponse(
             request, "accueil.html",
-            {"recap": recap, "details": details, "n_total": _nombre_factures()})
+            {"recap": recap, "details": details, "cout_lot": round(cout_lot, 4),
+             "n_total": _nombre_factures(), "cout_total": _cout_total()})
 
     @app.get("/referentiel", response_class=HTMLResponse)
     def referentiel(request: Request):

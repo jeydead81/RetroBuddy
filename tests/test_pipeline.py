@@ -108,3 +108,28 @@ def test_ligne_sans_aucun_identifiant_exclue(tmp_path):
     assert res.n_referentiel == 0
     lf = conn.execute("SELECT valide FROM lignes_facture").fetchone()
     assert lf["valide"] == 0
+
+
+class _ExtracteurAvecCout:
+    def __init__(self, facture, cout):
+        self._facture = facture
+        self.dernier_cout = cout
+
+    def extraire(self, pdf, model):
+        return self._facture
+
+
+def test_cout_remonte_dans_resultat_et_persiste(tmp_path):
+    conn = _conn(tmp_path)
+    f = _facture(lignes=[_ligne(montant=10.0)], total=10.0)
+    res = traiter_facture(conn, _pdf(), _ExtracteurAvecCout(f, 0.025), CFG)
+    assert res.cout == 0.025
+    c = conn.execute("SELECT cout_estime FROM factures").fetchone()["cout_estime"]
+    assert c == 0.025
+
+
+def test_cout_avec_mock_est_nul(tmp_path):
+    conn = _conn(tmp_path)
+    f = _facture(lignes=[_ligne(montant=10.0)], total=10.0)
+    res = traiter_facture(conn, _pdf(), MockExtractor(defaut=f), CFG)
+    assert res.cout == 0.0

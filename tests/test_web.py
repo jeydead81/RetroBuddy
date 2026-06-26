@@ -62,3 +62,14 @@ def test_accueil_affiche_total_en_base(tmp_path):
     client = _client(tmp_path)
     client.post("/ingest-un", files={"fichier": ("f.pdf", b"%PDF", "application/pdf")})
     assert "déjà en base" in client.get("/").text.lower()
+
+
+def test_ingest_un_renvoie_cout(tmp_path):
+    client = _client(tmp_path)
+    r = client.post("/ingest-un", files={"fichier": ("f.pdf", b"%PDF", "application/pdf")}).json()
+    assert "cout" in r
+    assert "cout_total" in r
+
+
+def test_accueil_affiche_cout_cumule(tmp_path):
+    assert "coût cumulé" in _client(tmp_path).get("/").text.lower()

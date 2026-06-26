@@ -2,7 +2,8 @@
 {% block contenu %}
 <h1>Import factures labo</h1>
 
-<p>Déjà en base : <strong id="n-base">{{ n_total }}</strong> factures.</p>
+<p>Déjà en base : <strong id="n-base">{{ n_total }}</strong> factures ·
+   Coût cumulé : $<strong id="cout-base">{{ "%.4f"|format(cout_total or 0) }}</strong></p>
 
 <form id="form-ingest" action="/ingest" method="post" enctype="multipart/form-data">
   <input id="input-fichiers" type="file" name="fichiers" accept="application/pdf" multiple required>
@@ -14,7 +15,7 @@
   <div class="barre-fond"><div id="barre" class="barre-jauge"></div></div>
   <p id="recap"></p>
   <table>
-    <tr><th>Fichier</th><th>Statut</th><th>Motif</th></tr>
+    <tr><th>Fichier</th><th>Statut</th><th>Coût $</th><th>Motif</th></tr>
     <tbody id="liste"></tbody>
   </table>
 </div>
@@ -27,11 +28,13 @@
     <li class="ignoree">Ignorées : {{ recap.get("ignoree", 0) }}</li>
     <li class="en_revue">En revue : {{ recap.get("en_revue", 0) }}</li>
     <li class="erreur">Erreurs : {{ recap.get("erreur", 0) }}</li>
+    <li>Coût du lot : ${{ "%.4f"|format(cout_lot or 0) }}</li>
   </ul>
   <table>
-    <tr><th>Fichier</th><th>Statut</th><th>Motif</th></tr>
-    {% for nom, statut, motif in details %}
-      <tr><td>{{ nom }}</td><td class="{{ statut }}">{{ statut }}</td><td>{{ motif or "" }}</td></tr>
+    <tr><th>Fichier</th><th>Statut</th><th>Coût $</th><th>Motif</th></tr>
+    {% for nom, statut, motif, cout in details %}
+      <tr><td>{{ nom }}</td><td class="{{ statut }}">{{ statut }}</td>
+          <td>{{ "%.5f"|format(cout or 0) }}</td><td>{{ motif or "" }}</td></tr>
     {% endfor %}
   </table>
 {% endif %}
@@ -41,10 +44,11 @@
   const form = document.getElementById("form-ingest");
   const input = document.getElementById("input-fichiers");
 
-  function maj_recap(t) {
+  function maj_recap(t, coutLot) {
     document.getElementById("recap").textContent =
       "Ingérées " + t.ingeree + " · Ignorées " + t.ignoree +
-      " · En revue " + t.en_revue + " · Erreurs " + t.erreur;
+      " · En revue " + t.en_revue + " · Erreurs " + t.erreur +
+      " · Coût du lot : $" + coutLot.toFixed(4);
   }
 
   form.addEventListener("submit", async function (e) {
@@ -58,13 +62,21 @@
     const barre = document.getElementById("barre");
     const liste = document.getElementById("liste");
     const t = { ingeree: 0, ignoree: 0, en_revue: 0, erreur: 0 };
+    let coutLot = 0;
 
     document.getElementById("progress").style.display = "block";
     liste.innerHTML = "";
     btn.disabled = true;
     compteur.textContent = "0 / " + N;
     barre.style.width = "0%";
-    maj_recap(t);
+    maj_recap(t, coutLot);
+
+    const td = (txt, cls) => {
+      const c = document.createElement("td");
+      c.textContent = txt || "";
+      if (cls) c.className = cls;
+      return c;
+    };
 
     for (let i = 0; i < N; i++) {
       const fd = new FormData();
@@ -79,23 +91,21 @@
       }
 
       t[r.statut] = (t[r.statut] || 0) + 1;
+      coutLot += (r.cout || 0);
       if (r.n_total != null) document.getElementById("n-base").textContent = r.n_total;
+      if (r.cout_total != null)
+        document.getElementById("cout-base").textContent = Number(r.cout_total).toFixed(4);
 
       const tr = document.createElement("tr");
-      const td = (txt, cls) => {
-        const c = document.createElement("td");
-        c.textContent = txt || "";
-        if (cls) c.className = cls;
-        return c;
-      };
       tr.appendChild(td(r.fichier || files[i].name));
       tr.appendChild(td(r.statut, r.statut));
+      tr.appendChild(td((r.cout || 0).toFixed(5)));
       tr.appendChild(td(r.motif));
       liste.appendChild(tr);
 
       compteur.textContent = (i + 1) + " / " + N;
       barre.style.width = Math.round((i + 1) / N * 100) + "%";
-      maj_recap(t);
+      maj_recap(t, coutLot);
     }
 
     btn.disabled = false;

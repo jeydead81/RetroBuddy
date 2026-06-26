@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS factures (
   statut TEXT,
   motif TEXT,
   modele_extraction TEXT,
+  cout_estime REAL,
   ingere_le TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -50,6 +51,7 @@ _COLONNES_AJOUTEES = [
     ("referentiel_prix", "type_code", "TEXT"),
     ("referentiel_prix", "labo", "TEXT"),
     ("lignes_facture", "motif_ligne", "TEXT"),
+    ("factures", "cout_estime", "REAL"),
 ]
 
 

@@ -11,23 +11,24 @@ class Resultat:
     facture_id: int | None
     total_calcule: float | None
     n_referentiel: int
+    cout: float = 0.0         # coût $ d'extraction (Sonnet + éventuelle escalade Opus)
 
 
 def _qualifier(facture):
     return [(l, selection.qualifier_ligne(l)) for l in facture.lignes]
 
 
-def _persister(conn, pdf, facture, statut, motif, modele, total_calcule, qualifs):
+def _persister(conn, pdf, facture, statut, motif, modele, total_calcule, qualifs, cout):
     cur = conn.execute(
         """
         INSERT INTO factures
           (fichier, labo, numero_facture, date_facture, type_document,
-           total_affiche, total_calcule, statut, motif, modele_extraction)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           total_affiche, total_calcule, statut, motif, modele_extraction, cout_estime)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (pdf.nom, facture.entete.labo, facture.entete.numero_facture,
          facture.entete.date_facture, facture.type_document,
-         facture.entete.total_ht_affiche, total_calcule, statut, motif, modele),
+         facture.entete.total_ht_affiche, total_calcule, statut, motif, modele, cout),
     )
     facture_id = cur.lastrowid
     for l, q in qualifs:
@@ -50,15 +51,17 @@ def _persister(conn, pdf, facture, statut, motif, modele, total_calcule, qualifs
 
 def traiter_facture(conn, pdf, extractor, config) -> Resultat:
     seuil = config["seuil_reconciliation_pct"]
+    cout = 0.0
 
     modele = config["model_defaut"]
     facture = extractor.extraire(pdf, modele)
+    cout += getattr(extractor, "dernier_cout", 0.0)
     qualifs = _qualifier(facture)
 
     dec, motif = classifier.decision(facture)
     if dec == "ignorer":
-        fid = _persister(conn, pdf, facture, "ignoree", motif, modele, None, qualifs)
-        return Resultat("ignoree", motif, fid, None, 0)
+        fid = _persister(conn, pdf, facture, "ignoree", motif, modele, None, qualifs, cout)
+        return Resultat("ignoree", motif, fid, None, 0, cout)
 
     ok, total = garde_fous.reconcilier_totaux(
         facture.lignes, facture.entete.total_ht_affiche, seuil)
@@ -67,20 +70,21 @@ def traiter_facture(conn, pdf, extractor, config) -> Resultat:
         # Escalade : une seule re-extraction en Opus
         modele = config["model_escalade"]
         facture = extractor.extraire(pdf, modele)
+        cout += getattr(extractor, "dernier_cout", 0.0)
         qualifs = _qualifier(facture)
         dec, motif = classifier.decision(facture)
         if dec == "ignorer":
-            fid = _persister(conn, pdf, facture, "ignoree", motif, modele, None, qualifs)
-            return Resultat("ignoree", motif, fid, None, 0)
+            fid = _persister(conn, pdf, facture, "ignoree", motif, modele, None, qualifs, cout)
+            return Resultat("ignoree", motif, fid, None, 0, cout)
         ok, total = garde_fous.reconcilier_totaux(
             facture.lignes, facture.entete.total_ht_affiche, seuil)
         if not ok:
             m = "totaux non réconciliés (Sonnet + Opus)"
-            fid = _persister(conn, pdf, facture, "en_revue", m, modele, total, qualifs)
-            return Resultat("en_revue", m, fid, total, 0)
+            fid = _persister(conn, pdf, facture, "en_revue", m, modele, total, qualifs, cout)
+            return Resultat("en_revue", m, fid, total, 0, cout)
 
-    fid = _persister(conn, pdf, facture, "ingeree", None, modele, total, qualifs)
+    fid = _persister(conn, pdf, facture, "ingeree", None, modele, total, qualifs, cout)
     entrees = [(q.code_ref, q.type_code, l) for l, q in qualifs if q.inclure]
     enregistrer_referentiel(conn, fid, facture.entete.date_facture,
                             facture.entete.labo, entrees)
-    return Resultat("ingeree", None, fid, total, len(entrees))
+    return Resultat("ingeree", None, fid, total, len(entrees), cout)

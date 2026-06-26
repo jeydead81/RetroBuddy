@@ -33,13 +33,15 @@ def test_schema_neuf_contient_les_nouvelles_colonnes(tmp_path):
     init_db(conn)
     assert {"type_code", "labo"} <= _colonnes(conn, "referentiel_prix")
     assert "motif_ligne" in _colonnes(conn, "lignes_facture")
+    assert "cout_estime" in _colonnes(conn, "factures")
 
 
 def test_migration_ajoute_colonnes_a_une_base_ancienne(tmp_path):
-    # Base « ancienne » : schéma V1 sans type_code / labo / motif_ligne.
+    # Base « ancienne » : schéma V1 sans les colonnes ajoutées ensuite.
     p = tmp_path / "old.db"
     c0 = sqlite3.connect(p)
     c0.executescript(
+        "CREATE TABLE factures (id INTEGER PRIMARY KEY, fichier TEXT);"
         "CREATE TABLE referentiel_prix (code TEXT, date_facture TEXT, prix_net REAL,"
         " PRIMARY KEY(code, date_facture));"
         "CREATE TABLE lignes_facture (id INTEGER PRIMARY KEY, code TEXT, valide INTEGER);"
@@ -51,3 +53,4 @@ def test_migration_ajoute_colonnes_a_une_base_ancienne(tmp_path):
     init_db(conn)  # doit migrer sans perdre les tables existantes
     assert {"type_code", "labo"} <= _colonnes(conn, "referentiel_prix")
     assert "motif_ligne" in _colonnes(conn, "lignes_facture")
+    assert "cout_estime" in _colonnes(conn, "factures")

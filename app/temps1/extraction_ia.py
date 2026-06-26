@@ -3,6 +3,7 @@ from typing import Protocol
 
 import anthropic
 
+from app.temps1.cout import cout_appel
 from app.temps1.pdf_reader import PdfDocument
 from app.temps1.schemas import FactureExtraite
 
@@ -38,6 +39,8 @@ class ClaudeExtractor:
     def __init__(self, api_key: str, prompt_path="prompts/extraction_facture.txt"):
         self._client = anthropic.Anthropic(api_key=api_key)
         self._prompt = Path(prompt_path).read_text(encoding="utf-8")
+        self.dernier_cout = 0.0   # coût $ du dernier appel
+        self.cout_cumule = 0.0    # coût $ depuis la création de l'extracteur
 
     def extraire(self, pdf: PdfDocument, model: str) -> FactureExtraite:
         resp = self._client.messages.parse(
@@ -56,6 +59,8 @@ class ClaudeExtractor:
             }],
             output_format=FactureExtraite,
         )
+        self.dernier_cout = cout_appel(model, resp.usage)
+        self.cout_cumule += self.dernier_cout
         if resp.stop_reason == "refusal":
             raise ExtractionError("extraction refusée par le modèle")
         if resp.parsed_output is None:
