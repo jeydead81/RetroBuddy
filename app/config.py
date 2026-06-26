@@ -6,6 +6,8 @@ DEFAUTS = {
     "model_defaut": "claude-sonnet-4-6",
     "model_escalade": "claude-opus-4-8",
     "seuil_reconciliation_pct": 1.0,
+    "seuil_match_bas": 0.80,
+    "seuil_match_auto": 0.95,
 }
 
 

@@ -15,3 +15,9 @@ def test_override_depuis_yaml(tmp_path):
     assert cfg["seuil_reconciliation_pct"] == 2.5
     assert cfg["anthropic_api_key"] == "cle"
     assert cfg["model_defaut"] == "claude-sonnet-4-6"  # défaut conservé
+
+
+def test_defauts_seuils_matching(tmp_path):
+    cfg = charger_config(tmp_path / "absent.yaml")
+    assert cfg["seuil_match_bas"] == 0.80
+    assert cfg["seuil_match_auto"] == 0.95
