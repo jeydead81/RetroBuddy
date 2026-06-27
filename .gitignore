@@ -5,3 +5,4 @@ config.local.yaml
 data/*.db
 data/samples/
 .pytest_cache/
+.claude/settings.local.json

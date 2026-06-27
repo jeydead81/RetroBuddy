@@ -82,6 +82,7 @@ CREATE TABLE IF NOT EXISTS abreviations_labo (
 _COLONNES_AJOUTEES = [
     ("referentiel_prix", "type_code", "TEXT"),
     ("referentiel_prix", "labo", "TEXT"),
+    ("referentiel_prix", "modifie_manuellement", "INTEGER DEFAULT 0"),
     ("lignes_facture", "motif_ligne", "TEXT"),
     ("factures", "cout_estime", "REAL"),
 ]

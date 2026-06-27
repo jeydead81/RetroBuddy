@@ -9,6 +9,11 @@
 {% endif %}
 
 <p>
+  <button onclick="recalculer()">↻ Recalculer les prix depuis le référentiel</button>
+  <span style="color:var(--grey); font-size:.88rem;">— reprend les prix corrigés au référentiel (hors lignes saisies à la main)</span>
+</p>
+
+<p>
   {% if f.bloquee %}
     <button disabled>Générer PDF</button>
     <button disabled>Générer Excel</button>
@@ -44,4 +49,11 @@
 </table>
 <p>Total HT : {{ f.total_ht }} · Total TVA : {{ f.total_tva }} ·
    <strong>Total TTC : {{ f.total_ttc }}</strong></p>
+
+<script>
+async function recalculer() {
+  const r = await fetch("/facture/{{ f.retro_id }}/recalculer", { method: "POST" });
+  if (r.ok) location.reload();
+}
+</script>
 {% endblock %}

@@ -15,7 +15,7 @@
   <div class="barre-fond"><div id="barre" class="barre-jauge"></div></div>
   <p id="recap"></p>
   <table>
-    <tr><th>Fichier</th><th>Lignes</th><th>Résolues</th><th>Rouges</th><th>Coût $</th></tr>
+    <tr><th>Fichier</th><th>Lignes</th><th>Validées</th><th>À compléter</th><th>Coût $</th></tr>
     <tbody id="liste"></tbody>
   </table>
 </div>
@@ -46,7 +46,7 @@
     document.getElementById("compteur").textContent = j.fait + " / " + j.total;
     document.getElementById("barre").style.width = (j.total ? Math.round(100 * j.fait / j.total) : 0) + "%";
     document.getElementById("recap").textContent =
-      "Résolues " + resolu + " · Rouges " + rouge + " · Coût du lot : $" + cout.toFixed(4);
+      "Validées " + resolu + " · À compléter " + rouge + " · Coût du lot : $" + cout.toFixed(4);
   }
 
   async function suivre(jobId) {

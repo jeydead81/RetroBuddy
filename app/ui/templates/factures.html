@@ -1,15 +1,14 @@
 {% extends "base.html" %}
+{% import "_macros.html" as ui %}
 {% block contenu %}
-<h1>Factures</h1>
-<p>
-  <a href="/export-base">Exporter la base</a>
-</p>
+<h1>Factures laboratoires</h1>
+<p><a href="/export-base">⤓ Exporter la base</a></p>
 <table>
   <tr><th>#</th><th>Fichier</th><th>Labo</th><th>Type</th><th>Statut</th><th>Motif</th>
       <th>Total affiché</th><th>Total calculé</th><th>Modèle</th></tr>
   {% for r in rows %}
     <tr><td>{{ r["id"] }}</td><td>{{ r["fichier"] }}</td><td>{{ r["labo"] }}</td>
-        <td>{{ r["type_document"] }}</td><td class="{{ r['statut'] }}">{{ r["statut"] }}</td>
+        <td>{{ r["type_document"] }}</td><td>{{ ui.badge(r["statut"]) }}</td>
         <td>{{ r["motif"] or "" }}</td><td>{{ r["total_affiche"] }}</td>
         <td>{{ r["total_calcule"] }}</td><td>{{ r["modele_extraction"] }}</td></tr>
   {% endfor %}

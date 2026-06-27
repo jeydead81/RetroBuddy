@@ -1,0 +1,14 @@
+{% macro badge(code) -%}
+{%- set m = {
+  'ingeree': ('Ingérée', 'b-ok'),
+  'ignoree': ('Ignorée', 'b-info'),
+  'en_revue': ('En revue', 'b-warn'),
+  'erreur': ('Erreur', 'b-danger'),
+  'resolu': ('Validé', 'b-ok'),
+  'orange': ('À confirmer', 'b-warn'),
+  'rouge': ('À compléter', 'b-danger'),
+  'ok': ('OK', 'b-ok')
+} -%}
+{%- set l = m.get(code, (code, 'b-info')) -%}
+<span class="badge {{ l[1] }}">{{ l[0] }}</span>
+{%- endmacro %}

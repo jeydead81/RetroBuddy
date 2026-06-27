@@ -19,7 +19,8 @@ def enregistrer_referentiel(conn, facture_id, date_facture, labo, entrees):
               remise_pct=excluded.remise_pct,
               prix_net=excluded.prix_net,
               designation=excluded.designation,
-              facture_id=excluded.facture_id
+              facture_id=excluded.facture_id,
+              modifie_manuellement=0
             """,
             (code_ref, date_facture, type_code, labo,
              l.prix_brut, l.remise_pct, l.prix_net, l.designation, facture_id),

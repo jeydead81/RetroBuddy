@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block contenu %}
+<style>
+  .hero{ display:flex; gap:1.5rem; align-items:center; flex-wrap:wrap;
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+    padding:1.4rem 1.6rem; box-shadow:var(--shadow); margin-bottom:1.6rem; }
+  .hero-img{ width:148px; height:148px; flex:none; }
+  .hero .col{ min-width:240px; flex:1; }
+  .hero h1{ margin-top:0; }
+  .hero .accroche{ font-size:1.08rem; color:var(--primary-d); max-width:48ch; }
+  .hero .stat{ color:var(--grey); font-size:.92rem; }
+
+  .etapes{ display:grid; grid-template-columns:repeat(auto-fit,minmax(232px,1fr)); gap:1rem;
+    margin:1rem 0 1.6rem; }
+  .etape{ display:block; background:var(--surface); border:1px solid var(--border);
+    border-radius:var(--radius); padding:1.15rem; color:var(--fg);
+    transition:transform .12s ease-out, box-shadow .12s ease-out; }
+  .etape:hover{ transform:translateY(-3px); box-shadow:var(--shadow); text-decoration:none; }
+  .etape .num{ display:inline-flex; align-items:center; justify-content:center;
+    width:2rem; height:2rem; border-radius:999px; background:var(--primary); color:#fff;
+    font-family:'Figtree',sans-serif; font-weight:700; margin-bottom:.55rem; }
+  .etape h3{ margin:.15rem 0 .4rem; }
+  .etape p{ color:#3f6e52; font-size:.9rem; margin:0; }
+  .ps{ color:var(--grey); font-size:.92rem; }
+  @media (prefers-reduced-motion:reduce){ .etape:hover{ transform:none; } }
+  @media (max-width:640px){ .hero-img{ width:104px; height:104px; } }
+</style>
+
+<section class="hero">
+  <img src="/mascotte.png" alt="Mascotte RetroBuddy : un robot détendu dans un caducée" class="hero-img">
+  <div class="col">
+    <h1>Bienvenue chez RetroBuddy 👋</h1>
+    <p class="accroche">Le petit robot qui gère vos factures de rétrocession pendant que
+       vous gardez les pieds dans le sable. 🌴</p>
+    <p class="stat">Déjà <strong>{{ n_total }}</strong> facture(s) laboratoire(s) en mémoire ·
+       {{ "%.2f"|format(cout_total or 0) }} $ de lecture cumulée.</p>
+  </div>
+</section>
+
+<h2>Comment ça marche ? 4 étapes, et c'est plié.</h2>
+<div class="etapes">
+  <a class="etape" href="/import-labos">
+    <span class="num">1</span>
+    <h3>Importez vos factures labos</h3>
+    <p>Déposez les PDF de vos laboratoires. RetroBuddy en extrait les prix d'achat et
+       construit votre référentiel, tout seul. Vous ne tapez rien.</p>
+  </a>
+  <a class="etape" href="/retro">
+    <span class="num">2</span>
+    <h3>Importez vos factures LGO</h3>
+    <p>Les factures de rétrocession sorties du logiciel. Il les lit, les découpe par bon
+       de livraison et rapproche chaque ligne du bon prix.</p>
+  </a>
+  <a class="etape" href="/resolution">
+    <span class="num">3</span>
+    <h3>Validez les écarts</h3>
+    <p>Tout ce dont il n'est pas <em>certain</em> atterrit ici, en couleur. Vous confirmez
+       ou complétez — jamais la moindre invention sur un montant.</p>
+  </a>
+  <a class="etape" href="/factures-retro">
+    <span class="num">4</span>
+    <h3>Éditez la facture</h3>
+    <p>Regroupement par BL, ventilation de la TVA, export PDF / Excel / CSV.
+       Plus qu'à envoyer, et hop, à la plage. 🍹</p>
+  </a>
+</div>
+
+<p class="ps">Un prix vous chiffonne ? Le <a href="/referentiel">Référentiel</a> est modifiable
+   à la main, et vos corrections sont gravées dans le marbre (enfin… dans la base 😉).</p>
+{% endblock %}

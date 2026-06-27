@@ -18,6 +18,7 @@ from app.temps4.export_csv import facture_csv
 from app.temps4.export_pdf import facture_pdf
 from app.temps4.export_xlsx import facture_xlsx
 from app.temps4.facture_builder import construire_facture
+from app.temps4.recalcul import recalculer_prix_facture
 from app.jobs import RegistreJobs, lancer_job
 
 TEMPLATES = Jinja2Templates(directory="app/ui/templates")
@@ -76,7 +77,13 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
     @app.get("/", response_class=HTMLResponse)
     def accueil(request: Request):
         return TEMPLATES.TemplateResponse(
-            request, "accueil.html",
+            request, "home.html",
+            {"n_total": _nombre_factures(), "cout_total": _cout_total()})
+
+    @app.get("/import-labos", response_class=HTMLResponse)
+    def import_labos(request: Request):
+        return TEMPLATES.TemplateResponse(
+            request, "import_labos.html",
             {"n_total": _nombre_factures(), "cout_total": _cout_total()})
 
     @app.post("/ingest-un")
@@ -97,7 +104,7 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
             details.append((r["fichier"], r["statut"], r["motif"], r["cout"]))
             cout_lot += r["cout"]
         return TEMPLATES.TemplateResponse(
-            request, "accueil.html",
+            request, "import_labos.html",
             {"recap": recap, "details": details, "cout_lot": round(cout_lot, 4),
              "n_total": _nombre_factures(), "cout_total": _cout_total()})
 
@@ -105,9 +112,34 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
     def referentiel(request: Request):
         rows = conn().execute(
             "SELECT code, type_code, labo, date_facture, designation, "
-            "prix_brut, remise_pct, prix_net "
+            "prix_brut, remise_pct, prix_net, modifie_manuellement "
             "FROM referentiel_prix ORDER BY code, date_facture").fetchall()
         return TEMPLATES.TemplateResponse(request, "referentiel.html", {"rows": rows})
+
+    @app.post("/referentiel/maj")
+    def referentiel_maj(payload: dict):
+        """Édition manuelle d'une ligne du référentiel (clé : code + date_facture).
+
+        Seules les valeurs sont modifiables ; on recalcule le PA net pour rester
+        cohérent et on marque la ligne pour qu'une ré-ingestion ne l'écrase pas.
+        """
+        code, date_facture = payload.get("code"), payload.get("date_facture")
+        brut, remise, net = (payload.get("prix_brut"), payload.get("remise_pct"),
+                             payload.get("prix_net"))
+        # Cohérence : PA net recalculé depuis brut + remise s'il n'est pas forcé à la main.
+        if net in (None, "") and brut not in (None, ""):
+            taux = float(remise) if remise not in (None, "") else 0.0
+            net = round(float(brut) * (1 - taux / 100), 4)
+        c = conn()  # une seule connexion pour l'UPDATE + le commit
+        cur = c.execute(
+            "UPDATE referentiel_prix SET prix_brut=?, remise_pct=?, prix_net=?, "
+            "modifie_manuellement=1 WHERE code=? AND date_facture=?",
+            (brut, remise, net, code, date_facture))
+        c.commit()
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=404, detail="ligne de référentiel introuvable")
+        return {"prix_brut": brut, "remise_pct": remise, "prix_net": net,
+                "modifie_manuellement": True}
 
     @app.get("/factures", response_class=HTMLResponse)
     def factures(request: Request):
@@ -297,6 +329,11 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
         f = _facture_ou_404(retro_id)
         return TEMPLATES.TemplateResponse(request, "facture.html", {"f": f})
 
+    @app.post("/facture/{retro_id}/recalculer")
+    def facture_recalculer(retro_id: int):
+        """Propage le référentiel à cette facture (lignes auto-rapprochées uniquement)."""
+        return recalculer_prix_facture(conn(), retro_id)
+
     @app.get("/facture/{retro_id}/csv")
     def facture_dl_csv(retro_id: int):
         f = _facture_ou_404(retro_id)
@@ -332,6 +369,10 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
     @app.get("/favicon.png", include_in_schema=False)
     def favicon_png():
         return FileResponse("app/ui/static/favicon.png")
+
+    @app.get("/mascotte.png", include_in_schema=False)
+    def mascotte():
+        return FileResponse("app/ui/static/mascotte.png")
 
     return app
 

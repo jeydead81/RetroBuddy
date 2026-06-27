@@ -1,16 +1,17 @@
 {% extends "base.html" %}
+{% import "_macros.html" as ui %}
 {% block contenu %}
-<h1>Import factures labo</h1>
+<h1>Import factures laboratoires</h1>
 
 <p>Déjà en base : <strong id="n-base">{{ n_total }}</strong> factures ·
-   Coût cumulé : $<strong id="cout-base">{{ "%.4f"|format(cout_total or 0) }}</strong></p>
+   Coût cumulé : <strong id="cout-base">{{ "%.4f"|format(cout_total or 0) }}</strong> $</p>
 
 <form id="form-ingest" action="/ingest" method="post" enctype="multipart/form-data">
   <input id="input-fichiers" type="file" name="fichiers" accept="application/pdf" multiple required>
   <button id="btn-ingest" type="submit">Ingérer</button>
 </form>
 
-<div id="progress" style="display:none; margin-top:1rem;">
+<div id="progress" style="display:none; margin-top:1.2rem;">
   <p>Progression : <span id="compteur">0 / 0</span></p>
   <div class="barre-fond"><div id="barre" class="barre-jauge"></div></div>
   <p id="recap"></p>
@@ -24,16 +25,16 @@
   {# Repli sans JS : récap rendu côté serveur après /ingest #}
   <h2>Résultat</h2>
   <ul>
-    <li class="ingeree">Ingérées : {{ recap.get("ingeree", 0) }}</li>
-    <li class="ignoree">Ignorées : {{ recap.get("ignoree", 0) }}</li>
-    <li class="en_revue">En revue : {{ recap.get("en_revue", 0) }}</li>
-    <li class="erreur">Erreurs : {{ recap.get("erreur", 0) }}</li>
-    <li>Coût du lot : ${{ "%.4f"|format(cout_lot or 0) }}</li>
+    <li>Ingérées : {{ recap.get("ingeree", 0) }}</li>
+    <li>Ignorées : {{ recap.get("ignoree", 0) }}</li>
+    <li>En revue : {{ recap.get("en_revue", 0) }}</li>
+    <li>Erreurs : {{ recap.get("erreur", 0) }}</li>
+    <li>Coût du lot : {{ "%.4f"|format(cout_lot or 0) }} $</li>
   </ul>
   <table>
     <tr><th>Fichier</th><th>Statut</th><th>Coût $</th><th>Motif</th></tr>
     {% for nom, statut, motif, cout in details %}
-      <tr><td>{{ nom }}</td><td class="{{ statut }}">{{ statut }}</td>
+      <tr><td>{{ nom }}</td><td>{{ ui.badge(statut) }}</td>
           <td>{{ "%.5f"|format(cout or 0) }}</td><td>{{ motif or "" }}</td></tr>
     {% endfor %}
   </table>
@@ -44,7 +45,15 @@
   const form = document.getElementById("form-ingest");
   const input = document.getElementById("input-fichiers");
   const CLE = "retrobuddy_job_ingest";
-  const td = (txt, cls) => { const c = document.createElement("td"); c.textContent = txt; if (cls) c.className = cls; return c; };
+  const LBL = { ingeree: ["Ingérée", "b-ok"], ignoree: ["Ignorée", "b-info"],
+                en_revue: ["En revue", "b-warn"], erreur: ["Erreur", "b-danger"] };
+  const td = (txt) => { const c = document.createElement("td"); c.textContent = txt; return c; };
+  const badgeCell = (code) => {
+    const c = document.createElement("td");
+    const m = LBL[code] || [code, "b-info"];
+    c.innerHTML = '<span class="badge ' + m[1] + '">' + m[0] + '</span>';
+    return c;
+  };
 
   function rendre(j) {
     const t = { ingeree: 0, ignoree: 0, en_revue: 0, erreur: 0 };
@@ -57,7 +66,7 @@
       if (r.n_total != null) document.getElementById("n-base").textContent = r.n_total;
       if (r.cout_total != null) document.getElementById("cout-base").textContent = Number(r.cout_total).toFixed(4);
       const tr = document.createElement("tr");
-      tr.appendChild(td(r.fichier)); tr.appendChild(td(r.statut, r.statut));
+      tr.appendChild(td(r.fichier)); tr.appendChild(badgeCell(r.statut));
       tr.appendChild(td((r.cout || 0).toFixed(5))); tr.appendChild(td(r.motif || ""));
       liste.appendChild(tr);
     }
@@ -65,7 +74,7 @@
     document.getElementById("barre").style.width = (j.total ? Math.round(100 * j.fait / j.total) : 0) + "%";
     document.getElementById("recap").textContent =
       "Ingérées " + t.ingeree + " · Ignorées " + t.ignoree + " · En revue " + t.en_revue +
-      " · Erreurs " + t.erreur + " · Coût du lot : $" + cout.toFixed(4);
+      " · Erreurs " + t.erreur + " · Coût du lot : " + cout.toFixed(4) + " $";
   }
 
   async function suivre(jobId) {

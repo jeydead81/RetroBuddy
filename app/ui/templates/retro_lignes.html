@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_macros.html" as ui %}
 {% block contenu %}
 <h1>Lignes de rétrocession</h1>
 <table>
@@ -8,7 +9,7 @@
     <tr><td>{{ r["numero"] }}</td><td>{{ r["bl_numero"] }}</td><td>{{ r["bl_date"] }}</td>
         <td>{{ r["designation"] }}</td><td>{{ r["code"] }}</td><td>{{ r["qte"] }}</td>
         <td>{{ r["tva"] }}</td><td>{{ r["prix_net"] }}</td>
-        <td class="{{ 'ingeree' if r['statut_ecart'] == 'resolu' else 'en_revue' }}">{{ r["statut_ecart"] }}</td></tr>
+        <td>{{ ui.badge(r["statut_ecart"]) }}</td></tr>
   {% endfor %}
 </table>
 {% endblock %}
