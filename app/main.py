@@ -1,8 +1,8 @@
 import tempfile
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi import Depends, FastAPI, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from app.config import charger_config
@@ -14,6 +14,10 @@ from app.temps2.schemas import RetroExtrait
 from app.temps2.traitement_retro import traiter_retro
 from app.temps3 import resolution as resolution_logique
 from app.temps3.rematch import rematcher
+from app.temps4.export_csv import facture_csv
+from app.temps4.export_pdf import facture_pdf
+from app.temps4.export_xlsx import facture_xlsx
+from app.temps4.facture_builder import construire_facture
 from app.jobs import RegistreJobs, lancer_job
 
 TEMPLATES = Jinja2Templates(directory="app/ui/templates")
@@ -271,6 +275,55 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
     def retro_progress(job_id: str):
         j = app.state.jobs_retro.lire(job_id)
         return j if j is not None else {"introuvable": True}
+
+    def _facture_ou_404(retro_id):
+        f = construire_facture(conn(), retro_id)
+        if f is None:
+            raise HTTPException(status_code=404, detail="facture introuvable")
+        return f
+
+    @app.get("/factures-retro", response_class=HTMLResponse)
+    def factures_retro(request: Request):
+        rows = conn().execute(
+            "SELECT d.id, d.numero, d.pharmacie_emettrice, d.pharmacie_destinataire, "
+            "COUNT(l.id) n_lignes, "
+            "SUM(CASE WHEN l.statut_ecart='rouge' THEN 1 ELSE 0 END) n_rouge "
+            "FROM retro_documents d LEFT JOIN retro_lignes l ON l.retro_id = d.id "
+            "GROUP BY d.id ORDER BY d.id DESC").fetchall()
+        return TEMPLATES.TemplateResponse(request, "factures_retro.html", {"rows": rows})
+
+    @app.get("/facture/{retro_id}", response_class=HTMLResponse)
+    def facture(request: Request, retro_id: int):
+        f = _facture_ou_404(retro_id)
+        return TEMPLATES.TemplateResponse(request, "facture.html", {"f": f})
+
+    @app.get("/facture/{retro_id}/csv")
+    def facture_dl_csv(retro_id: int):
+        f = _facture_ou_404(retro_id)
+        if f.bloquee:
+            raise HTTPException(status_code=409, detail="lignes à compléter")
+        return Response(
+            content=facture_csv(f), media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f"attachment; filename=facture_{retro_id}.csv"})
+
+    @app.get("/facture/{retro_id}/xlsx")
+    def facture_dl_xlsx(retro_id: int):
+        f = _facture_ou_404(retro_id)
+        if f.bloquee:
+            raise HTTPException(status_code=409, detail="lignes à compléter")
+        return Response(
+            content=facture_xlsx(f),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename=facture_{retro_id}.xlsx"})
+
+    @app.get("/facture/{retro_id}/pdf")
+    def facture_dl_pdf(retro_id: int):
+        f = _facture_ou_404(retro_id)
+        if f.bloquee:
+            raise HTTPException(status_code=409, detail="lignes à compléter")
+        return Response(
+            content=facture_pdf(f), media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename=facture_{retro_id}.pdf"})
 
     @app.get("/favicon.ico", include_in_schema=False)
     def favicon_ico():

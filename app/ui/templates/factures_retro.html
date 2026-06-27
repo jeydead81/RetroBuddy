@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block contenu %}
+<h1>Factures de rétrocession</h1>
+<table>
+  <tr><th>#</th><th>Numéro</th><th>Émettrice</th><th>Destinataire</th><th>Lignes</th><th>À compléter</th><th></th></tr>
+  {% for r in rows %}
+    <tr>
+      <td>{{ r["id"] }}</td><td>{{ r["numero"] }}</td>
+      <td>{{ r["pharmacie_emettrice"] }}</td><td>{{ r["pharmacie_destinataire"] }}</td>
+      <td>{{ r["n_lignes"] }}</td>
+      <td class="{{ 'en_revue' if r['n_rouge'] else 'ingeree' }}">{{ r["n_rouge"] }}</td>
+      <td><a href="/facture/{{ r['id'] }}">Ouvrir</a></td>
+    </tr>
+  {% endfor %}
+</table>
+{% endblock %}

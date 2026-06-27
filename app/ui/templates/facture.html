@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block contenu %}
+<h1>Facture {{ f.numero or "" }}</h1>
+<p>Émettrice : <strong>{{ f.emettrice or "" }}</strong> →
+   Destinataire : <strong>{{ f.destinataire or "" }}</strong> · {{ f.date_vente or "" }}</p>
+
+{% if f.bloquee %}
+  <p class="en_revue"><strong>{{ f.n_rouge }} ligne(s) à compléter avant de pouvoir générer la facture.</strong></p>
+{% endif %}
+
+<p>
+  {% if f.bloquee %}
+    <button disabled>Générer PDF</button>
+    <button disabled>Générer Excel</button>
+    <button disabled>Générer CSV</button>
+  {% else %}
+    <a href="/facture/{{ f.retro_id }}/pdf"><button>Générer PDF</button></a>
+    <a href="/facture/{{ f.retro_id }}/xlsx"><button>Générer Excel</button></a>
+    <a href="/facture/{{ f.retro_id }}/csv"><button>Générer CSV</button></a>
+  {% endif %}
+</p>
+
+{% for g in f.groupes %}
+  <h3>Bon livraison {{ g.bl_numero or "" }} du {{ g.bl_date or "" }}</h3>
+  <table>
+    <tr><th>Désignation</th><th>Code</th><th>Qté</th><th>PA brut</th><th>Remise %</th>
+        <th>PA net</th><th>TVA</th><th>Montant HT</th></tr>
+    {% for l in g.lignes %}
+      <tr><td>{{ l.designation }}</td><td>{{ l.code or "" }}</td><td>{{ l.qte }}</td>
+          <td>{{ l.prix_brut if l.prix_brut is not none else "" }}</td>
+          <td>{{ l.remise_pct if l.remise_pct is not none else "" }}</td>
+          <td>{{ l.prix_net }}</td><td>{{ l.tva if l.tva is not none else "" }}</td>
+          <td>{{ l.montant_ht }}</td></tr>
+    {% endfor %}
+  </table>
+{% endfor %}
+
+<h3>Ventilation TVA</h3>
+<table>
+  <tr><th>Taux TVA</th><th>Base HT</th><th>Montant TVA</th></tr>
+  {% for v in f.ventilation %}
+    <tr><td>{{ v.taux }}</td><td>{{ v.base_ht }}</td><td>{{ v.montant_tva }}</td></tr>
+  {% endfor %}
+</table>
+<p>Total HT : {{ f.total_ht }} · Total TVA : {{ f.total_tva }} ·
+   <strong>Total TTC : {{ f.total_ttc }}</strong></p>
+{% endblock %}
