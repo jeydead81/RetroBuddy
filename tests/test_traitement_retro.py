@@ -25,18 +25,22 @@ def _pdf():
     return PdfDocument(nom="retro.pdf", base64="", taille_octets=0)
 
 
-def _retro(lignes):
+def _retro(lignes, total=None):
+    # Par défaut le total affiché = Σ des montants de ligne -> réconcilie (pas d'escalade).
+    if total is None:
+        total = round(sum((l.montant_ht or 0) for l in lignes), 2)
     return RetroExtrait(
         type_document="retro_lgo",
         entete=RetroEntete(pharmacie_emettrice="SERALY",
                            pharmacie_destinataire="CENON",
-                           date_vente="22/09/2025", numero="N1"),
+                           date_vente="22/09/2025", numero="N1",
+                           total_ht_affiche=total),
         lignes=lignes)
 
 
-def _ligne(code, bl_date, bl_numero="28476"):
+def _ligne(code, bl_date, bl_numero="28476", montant_ht=10.0):
     return RetroLigne(designation="X", code=code, type_code="CIP13", qte=1,
-                      tva=10.0, bl_numero=bl_numero, bl_date=bl_date)
+                      tva=10.0, bl_numero=bl_numero, bl_date=bl_date, montant_ht=montant_ht)
 
 
 def test_ligne_resolue(tmp_path):
@@ -104,3 +108,40 @@ def test_cout_remonte(tmp_path):
     assert res.cout == 0.04
     c = conn.execute("SELECT cout_estime FROM retro_documents").fetchone()["cout_estime"]
     assert c == 0.04
+
+
+# --- Garde-fou de complétude : réconciliation du Total HT + escalade Opus ---
+
+def test_reconciliation_ok_enregistree(tmp_path):
+    conn = _conn(tmp_path)
+    _ref(conn, "3400930000007", "01/08/2025", 4.5)
+    retro = _retro([_ligne("3400930000007", "10/08/2025")])    # total 10 = Σ montants
+    res = traiter_retro(conn, _pdf(), MockExtractor(defaut=retro), CFG)
+    assert res.reconciliation_ok is True
+    d = conn.execute("SELECT reconciliation_ok, total_ht_calcule FROM retro_documents").fetchone()
+    assert d["reconciliation_ok"] == 1
+    assert d["total_ht_calcule"] == 10.0
+
+
+def test_reconciliation_escalade_opus_corrige(tmp_path):
+    conn = _conn(tmp_path)
+    mauvais = _retro([_ligne("3400930000007", "10/08/2025")], total=999.0)   # Sonnet : ne colle pas
+    bon = _retro([_ligne("3400930000007", "10/08/2025")])                    # Opus : réconcilie
+    ex = MockExtractor(par_modele={"claude-sonnet-4-6": mauvais, "claude-opus-4-8": bon})
+    res = traiter_retro(conn, _pdf(), ex, CFG)
+    assert res.reconciliation_ok is True
+    assert ("retro.pdf", "claude-opus-4-8") in ex.appels       # escalade bien déclenchée
+    assert conn.execute("SELECT reconciliation_ok FROM retro_documents").fetchone()[0] == 1
+
+
+def test_reconciliation_echec_bloque_la_facture(tmp_path):
+    from app.temps4.facture_builder import construire_facture
+    conn = _conn(tmp_path)
+    _ref(conn, "3400930000007", "01/08/2025", 4.5)             # la ligne se résout (0 rouge)
+    mauvais = _retro([_ligne("3400930000007", "10/08/2025")], total=999.0)
+    res = traiter_retro(conn, _pdf(), MockExtractor(defaut=mauvais), CFG)
+    assert res.reconciliation_ok is False
+    assert res.n_rouge == 0
+    f = construire_facture(conn, res.retro_id)
+    assert f.reconciliation_ok is False
+    assert f.bloquee is True                                   # bloquée sans aucune ligne rouge

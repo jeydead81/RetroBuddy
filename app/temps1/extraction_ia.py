@@ -33,6 +33,13 @@ class ExtractionError(RuntimeError):
     pass
 
 
+# Plafond de tokens de sortie. 16000 reste sous la limite "non-streaming" du SDK
+# (au-delà, l'appel doit passer en streaming, sinon ValueError / timeout HTTP).
+# Si une facture très longue sature ce plafond, on le détecte (stop_reason) et on
+# lève une erreur explicite plutôt que de tronquer/perdre des lignes en silence.
+MAX_TOKENS_EXTRACTION = 16000
+
+
 class ClaudeExtractor:
     """Extracteur réel : envoie le PDF à Claude (lecture native) avec sortie structurée."""
 
@@ -47,7 +54,7 @@ class ClaudeExtractor:
     def extraire(self, pdf: PdfDocument, model: str):
         resp = self._client.messages.parse(
             model=model,
-            max_tokens=16000,
+            max_tokens=MAX_TOKENS_EXTRACTION,
             system=[{"type": "text", "text": self._prompt,
                      "cache_control": {"type": "ephemeral"}}],
             messages=[{
@@ -65,6 +72,12 @@ class ClaudeExtractor:
         self.cout_cumule += self.dernier_cout
         if resp.stop_reason == "refusal":
             raise ExtractionError("extraction refusée par le modèle")
+        if resp.stop_reason == "max_tokens":
+            # Réponse coupée par le plafond de sortie : on refuse plutôt que de
+            # risquer une facture amputée de lignes.
+            raise ExtractionError(
+                "réponse tronquée : facture trop longue pour une extraction en un appel "
+                "(à découper ou à réessayer)")
         if resp.parsed_output is None:
             raise ExtractionError("extraction non conforme au schéma")
         return resp.parsed_output

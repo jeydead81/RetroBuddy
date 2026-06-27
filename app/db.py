@@ -85,6 +85,10 @@ _COLONNES_AJOUTEES = [
     ("referentiel_prix", "modifie_manuellement", "INTEGER DEFAULT 0"),
     ("lignes_facture", "motif_ligne", "TEXT"),
     ("factures", "cout_estime", "REAL"),
+    ("retro_documents", "total_ht_affiche", "REAL"),
+    ("retro_documents", "total_ht_calcule", "REAL"),
+    ("retro_documents", "reconciliation_ok", "INTEGER DEFAULT 1"),
+    ("retro_documents", "motif_reconciliation", "TEXT"),
 ]
 
 

@@ -4,7 +4,13 @@
 <p>Émettrice : <strong>{{ f.emettrice or "" }}</strong> →
    Destinataire : <strong>{{ f.destinataire or "" }}</strong> · {{ f.date_vente or "" }}</p>
 
-{% if f.bloquee %}
+{% if not f.reconciliation_ok %}
+  <p class="erreur"><strong>⚠ Contrôle de complétude en échec — {{ f.motif_reconciliation }}.</strong></p>
+  <p class="erreur">Total HT affiché sur la facture : <strong>{{ f.total_ht_affiche }}</strong> €
+     · recalculé depuis les lignes lues : <strong>{{ f.total_ht_calcule }}</strong> €.
+     Des lignes sont peut-être manquantes — vérifiez le PDF avant toute génération.</p>
+{% endif %}
+{% if f.n_rouge %}
   <p class="en_revue"><strong>{{ f.n_rouge }} ligne(s) à compléter avant de pouvoir générer la facture.</strong></p>
 {% endif %}
 

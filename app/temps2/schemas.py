@@ -9,6 +9,7 @@ class RetroLigne(BaseModel):
     tva: float | None = None         # Taux TVA (2.1 | 5.5 | 10 | 20), PAS la remise
     bl_numero: str | None = None
     bl_date: str | None = None
+    montant_ht: float | None = None  # Montant HT de la ligne — contrôle de complétude only
 
 
 class RetroEntete(BaseModel):
@@ -16,6 +17,7 @@ class RetroEntete(BaseModel):
     pharmacie_destinataire: str | None = None
     date_vente: str | None = None
     numero: str | None = None
+    total_ht_affiche: float | None = None   # Total HT du récap — contrôle de complétude
 
 
 class RetroExtrait(BaseModel):

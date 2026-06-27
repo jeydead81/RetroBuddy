@@ -12,11 +12,41 @@ class ResultatRetro:
     n_rouge: int
     cout: float = 0.0
     n_orange: int = 0
+    reconciliation_ok: bool = True
+    motif_reconciliation: str | None = None
+
+
+def _reconcilier(retro):
+    """Contrôle de complétude : Σ(montant HT des lignes) == Total HT affiché ?
+
+    Tolérance = arrondi cumulé (~0,005 €/ligne), très en-dessous d'une ligne réelle
+    (plusieurs €) : une ligne oubliée est détectée sans fausse alerte d'arrondi.
+    Retourne (ok: bool, total_calcule: float|None, motif: str|None).
+    """
+    total = retro.entete.total_ht_affiche
+    if total is None:
+        return False, None, "Total HT introuvable sur la facture"
+    if any(l.montant_ht is None for l in retro.lignes):
+        return False, None, "montant absent sur au moins une ligne"
+    somme = round(sum(l.montant_ht for l in retro.lignes), 2)
+    tol = round(0.02 + 0.005 * len(retro.lignes), 2)
+    if abs(somme - total) <= tol:
+        return True, somme, None
+    return False, somme, f"écart de total : {somme} calculé vs {total} affiché"
 
 
 def traiter_retro(conn, pdf, extractor, config) -> ResultatRetro:
     retro = extractor.extraire(pdf, config["model_defaut"])
     cout = getattr(extractor, "dernier_cout", 0.0)
+
+    # Garde-fou : la somme des lignes doit réconcilier le Total HT affiché. Sinon,
+    # un montant est en jeu -> une seule re-extraction en Opus (2e avis).
+    ok, total_calc, motif = _reconcilier(retro)
+    if not ok:
+        retro = extractor.extraire(pdf, config["model_escalade"])
+        cout += getattr(extractor, "dernier_cout", 0.0)
+        ok, total_calc, motif = _reconcilier(retro)
+
     seuil_bas = config.get("seuil_match_bas", 0.80)
     seuil_auto = config.get("seuil_match_auto", 0.95)
     abrev = charger_abreviations(conn)
@@ -24,11 +54,14 @@ def traiter_retro(conn, pdf, extractor, config) -> ResultatRetro:
     cur = conn.execute(
         """
         INSERT INTO retro_documents
-          (fichier, pharmacie_emettrice, pharmacie_destinataire, date_vente, numero, cout_estime)
-        VALUES (?, ?, ?, ?, ?, ?)
+          (fichier, pharmacie_emettrice, pharmacie_destinataire, date_vente, numero,
+           cout_estime, total_ht_affiche, total_ht_calcule, reconciliation_ok,
+           motif_reconciliation)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (pdf.nom, retro.entete.pharmacie_emettrice, retro.entete.pharmacie_destinataire,
-         retro.entete.date_vente, retro.entete.numero, cout),
+         retro.entete.date_vente, retro.entete.numero, cout,
+         retro.entete.total_ht_affiche, total_calc, int(ok), motif),
     )
     retro_id = cur.lastrowid
 
@@ -71,4 +104,5 @@ def traiter_retro(conn, pdf, extractor, config) -> ResultatRetro:
              l.bl_date, code_resolu, pb, rp, pn, passe, score, statut, valide),
         )
     conn.commit()
-    return ResultatRetro(retro_id, len(retro.lignes), n_resolu, n_rouge, cout, n_orange)
+    return ResultatRetro(retro_id, len(retro.lignes), n_resolu, n_rouge, cout, n_orange,
+                         reconciliation_ok=ok, motif_reconciliation=motif)

@@ -41,14 +41,20 @@ class Facture:
     total_ttc: float
     bloquee: bool
     n_rouge: int
+    reconciliation_ok: bool = True
+    total_ht_affiche: float | None = None
+    total_ht_calcule: float | None = None
+    motif_reconciliation: str | None = None
 
 
 def construire_facture(conn, retro_id):
     doc = conn.execute(
-        "SELECT pharmacie_emettrice, pharmacie_destinataire, numero, date_vente "
+        "SELECT pharmacie_emettrice, pharmacie_destinataire, numero, date_vente, "
+        "reconciliation_ok, total_ht_affiche, total_ht_calcule, motif_reconciliation "
         "FROM retro_documents WHERE id = ?", (retro_id,)).fetchone()
     if doc is None:
         return None
+    reco_ok = doc["reconciliation_ok"] != 0   # None (anciennes lignes) -> considéré OK
 
     lignes = conn.execute(
         "SELECT designation, code, qte, prix_brut, remise_pct, prix_net, tva, "
@@ -87,4 +93,9 @@ def construire_facture(conn, retro_id):
 
     return Facture(retro_id, doc["pharmacie_emettrice"], doc["pharmacie_destinataire"],
                    doc["numero"], doc["date_vente"], groupes, ventilation,
-                   total_ht, total_tva, total_ttc, n_rouge > 0, n_rouge)
+                   total_ht, total_tva, total_ttc,
+                   bloquee=(n_rouge > 0 or not reco_ok), n_rouge=n_rouge,
+                   reconciliation_ok=reco_ok,
+                   total_ht_affiche=doc["total_ht_affiche"],
+                   total_ht_calcule=doc["total_ht_calcule"],
+                   motif_reconciliation=doc["motif_reconciliation"])

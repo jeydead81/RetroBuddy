@@ -318,7 +318,7 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
     def factures_retro(request: Request):
         rows = conn().execute(
             "SELECT d.id, d.numero, d.pharmacie_emettrice, d.pharmacie_destinataire, "
-            "COUNT(l.id) n_lignes, "
+            "d.reconciliation_ok, COUNT(l.id) n_lignes, "
             "SUM(CASE WHEN l.statut_ecart='rouge' THEN 1 ELSE 0 END) n_rouge "
             "FROM retro_documents d LEFT JOIN retro_lignes l ON l.retro_id = d.id "
             "GROUP BY d.id ORDER BY d.id DESC").fetchall()
