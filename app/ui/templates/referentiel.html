@@ -21,6 +21,8 @@
       <small class="marque" style="color:var(--secondary); font-weight:600;">{% if r['modifie_manuellement'] %}✎ modifié{% endif %}</small>
     </td>
   </tr>
+  {% else %}
+  <tr><td colspan="9" style="color:var(--grey); padding:1rem;">Référentiel vide — importez vos factures laboratoires à l'<a href="/import-labos">étape 1</a>.</td></tr>
   {% endfor %}
 </table>
 

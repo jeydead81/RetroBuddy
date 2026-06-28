@@ -11,6 +11,8 @@
         <td>{{ r["type_document"] }}</td><td>{{ ui.badge(r["statut"]) }}</td>
         <td>{{ r["motif"] or "" }}</td><td>{{ r["total_affiche"] }}</td>
         <td>{{ r["total_calcule"] }}</td><td>{{ r["modele_extraction"] }}</td></tr>
+  {% else %}
+    <tr><td colspan="9" style="color:var(--grey); padding:1rem;">Aucune facture laboratoire — importez-en à l'<a href="/import-labos">étape 1</a>.</td></tr>
   {% endfor %}
 </table>
 {% endblock %}

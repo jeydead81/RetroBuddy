@@ -36,6 +36,16 @@ def get_retro_extractor():
                            output_format=RetroExtrait)
 
 
+def _motif_erreur(e):
+    """Traduit une exception d'extraction en message compréhensible pour l'utilisateur."""
+    s = str(e).lower()
+    if any(k in s for k in ("authentication", "x-api-key", "api_key", "401", "invalid api key")):
+        return "clé API invalide ou absente — vérifiez-la dans ⚙ Réglages"
+    if any(k in s for k in ("rate limit", "429", "quota", "credit", "insufficient", "billing")):
+        return "quota ou crédits API épuisés — vérifiez votre compte Anthropic"
+    return f"extraction impossible : {e}"
+
+
 def creer_app(db_path="data/retrocession.db") -> FastAPI:
     app = FastAPI(title="RetroBuddy")
     app.state.db_path = db_path
@@ -82,7 +92,7 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
             res = traiter_facture(conn(), pdf, extractor, app.state.config)
             statut, motif, n_ref, cout = res.statut, res.motif, res.n_referentiel, res.cout
         except Exception as e:  # un PDF qui échoue ne doit pas casser le lot
-            statut, motif, n_ref, cout = "erreur", f"extraction impossible : {e}", 0, 0.0
+            statut, motif, n_ref, cout = "erreur", _motif_erreur(e), 0, 0.0
         finally:
             Path(chemin).unlink(missing_ok=True)
         return {"fichier": fichier.filename, "statut": statut, "motif": motif,
@@ -177,6 +187,9 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
     def _nombre_retro():
         return conn().execute("SELECT COUNT(*) n FROM retro_documents").fetchone()["n"]
 
+    def _nombre_referentiel():
+        return conn().execute("SELECT COUNT(*) n FROM referentiel_prix").fetchone()["n"]
+
     def _cout_total_retro():
         v = conn().execute(
             "SELECT COALESCE(SUM(cout_estime), 0) c FROM retro_documents").fetchone()["c"]
@@ -194,7 +207,7 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
                    "n_rouge": res.n_rouge, "cout": round(res.cout, 5)}
         except Exception as e:
             out = {"n_lignes": 0, "n_resolu": 0, "n_rouge": 0, "cout": 0.0,
-                   "erreur": f"extraction impossible : {e}"}
+                   "erreur": _motif_erreur(e)}
         finally:
             Path(chemin).unlink(missing_ok=True)
         out.update({"fichier": fichier.filename,
@@ -205,7 +218,8 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
     def retro(request: Request):
         return TEMPLATES.TemplateResponse(
             request, "retro.html",
-            {"n_total": _nombre_retro(), "cout_total": _cout_total_retro()})
+            {"n_total": _nombre_retro(), "cout_total": _cout_total_retro(),
+             "n_referentiel": _nombre_referentiel()})
 
     @app.post("/retro/ingest-un")
     def retro_ingest_un(fichier: UploadFile, extractor=Depends(get_retro_extractor)):
@@ -276,7 +290,7 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
             out = {"statut": res.statut, "motif": res.motif,
                    "n_referentiel": res.n_referentiel, "cout": round(res.cout, 5)}
         except Exception as e:
-            out = {"statut": "erreur", "motif": f"extraction impossible : {e}",
+            out = {"statut": "erreur", "motif": _motif_erreur(e),
                    "n_referentiel": 0, "cout": 0.0}
         finally:
             Path(chemin).unlink(missing_ok=True)
@@ -291,7 +305,7 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
             out = {"statut": "ok", "n_lignes": res.n_lignes, "n_resolu": res.n_resolu,
                    "n_orange": res.n_orange, "n_rouge": res.n_rouge, "cout": round(res.cout, 5)}
         except Exception as e:
-            out = {"statut": "erreur", "motif": f"extraction impossible : {e}",
+            out = {"statut": "erreur", "motif": _motif_erreur(e),
                    "n_lignes": 0, "n_resolu": 0, "n_orange": 0, "n_rouge": 0, "cout": 0.0}
         finally:
             Path(chemin).unlink(missing_ok=True)
@@ -336,7 +350,9 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
         rows = conn().execute(
             "SELECT d.id, d.numero, d.pharmacie_emettrice, d.pharmacie_destinataire, "
             "d.reconciliation_ok, COUNT(l.id) n_lignes, "
-            "SUM(CASE WHEN l.statut_ecart='rouge' THEN 1 ELSE 0 END) n_rouge "
+            "SUM(CASE WHEN l.statut_ecart='rouge' THEN 1 ELSE 0 END) n_rouge, "
+            "(SELECT COUNT(*) FROM retro_documents d2 WHERE d2.numero = d.numero "
+            " AND d.numero IS NOT NULL) AS n_meme_numero "
             "FROM retro_documents d LEFT JOIN retro_lignes l ON l.retro_id = d.id "
             "GROUP BY d.id ORDER BY d.id DESC").fetchall()
         return TEMPLATES.TemplateResponse(request, "factures_retro.html", {"rows": rows})

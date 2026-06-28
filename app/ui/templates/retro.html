@@ -5,6 +5,13 @@
 <p>Déjà en base : <strong id="n-base">{{ n_total }}</strong> factures LGO ·
    Coût cumulé : $<strong id="cout-base">{{ "%.4f"|format(cout_total or 0) }}</strong></p>
 
+{% if not n_referentiel %}
+  <div style="background:#FFFBEB; border:1px solid #FDE68A; border-radius:14px; padding:1rem 1.2rem;">
+    <strong>⛔ Commencez par l'étape 1.</strong> Votre référentiel de prix est vide :
+    sans lui, aucune ligne ne pourrait être rapprochée (tout ressortirait « à compléter »).
+    <p style="margin:.5rem 0 0;"><a href="/import-labos">→ Importer d'abord les factures laboratoires</a></p>
+  </div>
+{% else %}
 <form id="form-retro" action="/retro/ingest-un" method="post" enctype="multipart/form-data">
   <input id="input-fichiers" type="file" name="fichiers" accept="application/pdf" multiple required>
   <button id="btn-retro" type="submit">Ingérer</button>
@@ -24,6 +31,7 @@
 (function () {
   const form = document.getElementById("form-retro");
   const input = document.getElementById("input-fichiers");
+  if (!form) return;
   const CLE = "retrobuddy_job_retro";
   const td = (txt, cls) => { const c = document.createElement("td"); c.textContent = txt; if (cls) c.className = cls; return c; };
 
@@ -74,4 +82,5 @@
   if (enCours) suivre(enCours);
 })();
 </script>
+{% endif %}
 {% endblock %}

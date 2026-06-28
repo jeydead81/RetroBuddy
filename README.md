@@ -3,116 +3,131 @@
 
   # RetroBuddy
 
-  **Automatisation des factures de rétrocession inter-pharmacies.**
+  **L'outil qui automatise vos factures de rétrocession inter-pharmacies.** 🌴
 </div>
 
 ---
 
 RetroBuddy transforme un travail manuel d'environ 6 semaines/an en quelques heures de
-validation. À partir des **factures laboratoires** (pour le coût réel des produits) et des
-**factures de vente rétrocession du LGO**, l'outil construit un référentiel de prix, rapproche
-chaque ligne par code, et calcule le prix de rétrocession au **dernier prix net connu à la date
-du bon de livraison**.
+validation. À partir des **factures laboratoires** (le coût réel des produits) et des
+**factures de vente rétrocession du LGO (LGPI)**, l'outil construit un référentiel de prix,
+rapproche chaque ligne et calcule le prix de rétrocession au **dernier prix net connu à la
+date du bon de livraison**.
 
 Principe directeur : **aucune erreur permise sur le montant facturé.** Tout ce qui n'est pas
-certain est signalé pour vérification, jamais masqué ni inventé.
+certain est signalé pour vérification (rouge / orange / facture bloquée), jamais inventé ni
+masqué. C'est une **application web locale** (sur votre ordinateur) avec une base **dans un
+simple fichier** — pas de cloud, pas de compte, pas de serveur distant (hors les appels à
+l'IA qui lit les PDF).
 
-C'est une **application web locale** (FastAPI sur `localhost`) avec une base **SQLite** dans un
-simple fichier — pas de serveur distant, pas de comptes, pas de cloud (hors les appels d'API
-d'extraction). Installable telle quelle chez chaque confrère ; la base se copie d'un poste à
-l'autre.
+---
 
-## Architecture en 4 temps
+# 🚀 Installation (pour vos confrères) — pas besoin d'être informaticien
 
-| Temps | Rôle | Statut |
-|-------|------|--------|
-| **1** | Référentiel prix : ingestion des **factures labo** (PDF) → classification → extraction IA → garde-fous → référentiel prix historisé. | ✅ Terminé |
-| **2** | Ingestion de la **facture LGO de rétrocession** → matching par code (passes 1-2) → calcul « dernier prix net ≤ date du BL ». | ✅ Terminé |
-| **3** | Résolution des écarts : tableau type Excel, compteurs, couleurs rouge/orange, édition inline, matching par **désignation** (passes 3-4), ingestion en tâche de fond. | ✅ Terminé |
-| **4** | Édition de la facture de rétrocession (PDF calqué LGO + Excel), export bloqué tant qu'une ligne rouge subsiste ; passe 5 (relecture IA). | ⏳ À venir |
+> Sous **Windows**. Comptez ~10 minutes la première fois.
 
-Cadrage métier complet : [`CADRAGE_RETROCESSION.md`](CADRAGE_RETROCESSION.md).
-Specs & plans d'implémentation : [`docs/superpowers/`](docs/superpowers/).
+## 1. Récupérer RetroBuddy
 
-## Pile technique
+Deux options :
 
+- **Recommandé (mises à jour faciles)** : installez d'abord **Git** ([télécharger ici](https://git-scm.com/download/win), tout laisser par défaut). Puis ouvrez un dossier, clic droit › *« Ouvrir dans le Terminal »*, et tapez :
+  ```
+  git clone https://github.com/jeydead81/RetroBuddy.git
+  ```
+- **Plus simple (sans mises à jour automatiques)** : sur la [page GitHub](https://github.com/jeydead81/RetroBuddy), bouton vert **« Code › Download ZIP »**, puis **extraire** le dossier où vous voulez.
+
+## 2. Installer
+
+Ouvrez le dossier `RetroBuddy` et **double-cliquez sur `installer.bat`**. Il s'occupe de tout :
+- s'il manque **Python**, il ouvre la page de téléchargement → installez-le en **cochant bien « Add python.exe to PATH »**, puis relancez `installer.bat` ;
+- il installe les composants nécessaires ;
+- il crée un **raccourci « RetroBuddy » sur votre bureau**.
+
+> 💡 Si Windows affiche *« Windows a protégé votre PC »* : cliquez sur **« Informations complémentaires » › « Exécuter quand même »**.
+
+## 3. Lancer
+
+Double-cliquez sur le raccourci **RetroBuddy** du bureau. Le navigateur s'ouvre tout seul sur l'application.
+
+> ⚠️ Une **fenêtre noire** s'ouvre aussi : **laissez-la ouverte** (c'est le moteur de l'app). Pour arrêter RetroBuddy, fermez-la.
+
+## 4. Renseigner votre clé API (une seule fois)
+
+Au premier lancement, l'accueil vous demande une **clé API Anthropic** (c'est l'IA qui lit vos PDF).
+
+**Comment l'obtenir :**
+1. Créez un compte sur **[console.anthropic.com](https://console.anthropic.com)**.
+2. Ajoutez des crédits : menu **Billing** › ajoutez une carte / un montant (ex. 5 €).
+3. Menu **API Keys** › **Create Key** › copiez la clé (elle commence par `sk-ant-…`).
+4. Collez-la dans le bandeau de l'accueil RetroBuddy, **Enregistrer**. C'est tout — elle reste sur votre poste, n'est jamais partagée.
+
+> 💸 **Coût** : chaque facture lue coûte ~**0,01 à 0,05 €**. Une grosse facture (plusieurs pages) un peu plus. Vous voyez le coût en direct dans l'app et pouvez le réinitialiser dans ⚙ Réglages.
+
+---
+
+# 🧭 Utilisation — le parcours guidé
+
+L'accueil explique tout, et la barre du haut suit **l'ordre à respecter** :
+
+| Étape | Onglet | Ce que vous faites |
+|------|--------|--------------------|
+| **1** | **Import labos** | Déposez vos PDF de factures **laboratoires**. RetroBuddy en extrait les prix et construit le référentiel. *(À faire en premier — sans ça, rien ne se rapproche.)* |
+| **2** | **Import LGO** | Déposez la facture de **rétrocession (LGPI)**. Il la découpe par bon de livraison et rapproche chaque ligne. |
+| **3** | **Résolution** | Les lignes **à compléter** (rouge) / **à confirmer** (orange) : édition à la volée, accepter/refuser un rapprochement. |
+| **4** | **Factures LGPI** | La facture finale : aperçu, et **export PDF / Excel / CSV** *(bloqué tant qu'une ligne est à compléter ou qu'un contrôle échoue)*. |
+
+Onglets de consultation : **Référentiel** (prix, modifiables à la main), **Factures labos**, **Lignes rétro**.
+**⚙ Réglages** : votre clé API, **réinitialiser les compteurs de coût**, et **supprimer des données** (par catégorie, avec confirmation).
+
+> 🛡️ **Fiabilité** : RetroBuddy vérifie que rien n'a été oublié (somme des lignes = total affiché), que la TVA et les quantités sont cohérentes, et **bloque la facture** au moindre doute. Une même facture LGO importée deux fois est signalée (**doublon**).
+
+---
+
+# 🔄 Mettre à jour
+
+Si vous avez installé via **git clone** : double-cliquez sur **`update.bat`**. Il récupère la dernière version. **Vos données (base + clé) ne sont jamais touchées.**
+
+> Installé via ZIP ? Les mises à jour automatiques ne marchent pas — réinstallez via *git clone* pour en profiter.
+
+# 💾 Sauvegarde & partage
+
+Dans **Factures labos**, *« ⤓ Exporter la base »* enregistre **tout** dans un fichier. Faites-le **avant une mise à jour** ou pour **copier vos données sur un autre poste / les partager** entre confrères (puis *Importer* de l'autre côté).
+
+---
+
+# 🛠️ Pour les développeurs
+
+<details>
+<summary>Installation manuelle, tests, architecture</summary>
+
+### Pile technique
 - **Python 3.13**, **FastAPI** + **uvicorn**, **SQLite** (intégré à Python).
-- Extraction par **Claude** (lecture PDF native + sorties structurées Pydantic), modèle
-  **Sonnet 4.6** par défaut avec **escalade Opus 4.8** sur les factures dont les totaux ne
-  réconcilient pas.
-- Tests : **pytest** (cœur métier testé sans appel réseau ; tests d'intégration marqués).
+- Extraction par **Claude** (lecture PDF native + sorties structurées Pydantic), **Sonnet 4.6**
+  par défaut, **escalade Opus 4.8** quand les totaux ne réconcilient pas.
 
-## Installation
-
+### Installation manuelle
 ```bash
 python -m venv .venv
-.venv/Scripts/python -m pip install -r requirements.txt      # Windows
-# (Linux/macOS : .venv/bin/python -m pip install -r requirements.txt)
+.venv/Scripts/python -m pip install -r requirements.txt   # Windows
+# Linux/macOS : .venv/bin/python -m pip install -r requirements.txt
 ```
+La clé API se renseigne via l'UI (⚙ Réglages) ou dans `config.local.yaml` (gitignored).
 
-Configurer la clé API (jamais versionnée) :
-
+### Lancer / tester
 ```bash
-cp config.example.yaml config.local.yaml
-# puis éditer config.local.yaml et renseigner anthropic_api_key
+.venv/Scripts/python -m uvicorn app.main:app
+.venv/Scripts/python -m pytest                    # unitaires (aucun appel réseau)
+.venv/Scripts/python -m pytest -m integration     # extraction réelle (clé + PDF requis)
 ```
 
-> ⚠️ **Sécurité** : `config.local.yaml` et le dossier `data/` sont **gitignored**. Ne jamais
-> committer de clé API ni de base de données. Voir `.gitignore`.
+### Architecture (4 temps, tous terminés)
+1. **Référentiel prix** : ingestion factures labo → classification → extraction IA → garde-fous → référentiel historisé.
+2. **Rétrocession** : ingestion facture LGPI → matching par code → « dernier prix net ≤ date du BL ».
+3. **Résolution** : matching par désignation, édition inline, ingestion en tâche de fond.
+4. **Facture** : aperçu + exports PDF/Excel/CSV, **bloqués** si ligne rouge ou contrôle de cohérence en échec.
 
-## Utilisation
+Garde-fous d'extraction : **complétude** (Σ lignes = total HT), **cohérence ligne** (qté × prix = montant), **TVA par taux**, **anti-troncature**, **anti-doublon**. Voir `CADRAGE_RETROCESSION.md` et `docs/superpowers/`.
 
-Lancer l'application :
+> ⚠️ Une fois distribué aux confrères : **ne pas force-push `main`** (casse `git pull` côté `update.bat`).
 
-```bash
-.venv/Scripts/python -m uvicorn app.main:app --reload
-```
-
-Puis ouvrir <http://127.0.0.1:8000>. Sous Windows, le script `lancer_retrobuddy.bat` (ou le
-raccourci bureau) démarre le serveur et ouvre le navigateur automatiquement.
-
-Onglets :
-- **Import labo** — déposer les factures laboratoires (PDF). Compteur de progression + coût.
-- **Référentiel** — les prix extraits, historisés par code et par date.
-- **Factures** — statut de chaque facture (ingérée / ignorée / en revue) avec le motif.
-- **Rétrocession** — déposer la facture LGO. Compteur + coût.
-- **Lignes rétro** — chaque ligne rapprochée (resolu) ou signalée (rouge), par BL.
-- **Résolution** — les lignes à compléter (rouge) / à confirmer (orange) : édition inline, accepter/refuser un candidat par désignation, « Re-rapprocher ».
-
-> L'ingestion (labo et LGO) tourne **côté serveur** : changer d'onglet pendant un import
-> ne l'annule pas ; en revenant sur la page, la progression est toujours là.
-
-> Le matching cherche dans le référentiel : pour obtenir des rapprochements, ingérer d'abord les
-> factures labo correspondantes, puis la facture LGO.
-
-## Tests
-
-```bash
-.venv/Scripts/python -m pytest                   # tests unitaires (aucun appel réseau)
-.venv/Scripts/python -m pytest -m integration    # extraction réelle (nécessite clé + PDF d'échantillon)
-```
-
-## Structure du projet
-
-```
-app/
-  config.py            chargement config (clé API, seuils)
-  db.py                schéma SQLite + migrations idempotentes
-  codes/               validation CIP13/EAN13 (checksum), pont CIP<->EAN
-  temps1/              référentiel prix : extraction labo, classification,
-                       filtres, garde-fous, pipeline, coût
-  temps2/              rétrocession : extraction LGO, matching, calcul prix,
-                       normalisation des dates, orchestration
-  main.py              FastAPI : routes + UI
-  ui/                  templates HTML + statiques (logo/favicon)
-prompts/               prompts d'extraction (A = labo, B = LGO)
-tests/                 pytest
-docs/superpowers/      specs & plans d'implémentation
-data/                  base SQLite + échantillons (gitignored)
-```
-
-## Coût
-
-Extraction via Claude Sonnet 4.6 (~0,01–0,05 $/facture selon la taille), escalade Opus 4.8
-uniquement sur les cas signalés. Le coût réel est mesuré et affiché dans l'interface (par
-fichier, par lot, cumulé).
+</details>

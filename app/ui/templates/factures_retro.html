@@ -1,9 +1,10 @@
 {% extends "base.html" %}
 {% block contenu %}
-<h1>Factures de rétrocession</h1>
+<h1>Factures LGPI</h1>
+{% if rows %}
 <table>
   <tr><th>#</th><th>Numéro</th><th>Émettrice</th><th>Destinataire</th><th>Lignes</th>
-      <th>À compléter</th><th>Contrôle total</th><th></th></tr>
+      <th>À compléter</th><th>Contrôle total</th><th>Doublon</th><th></th></tr>
   {% for r in rows %}
     <tr>
       <td>{{ r["id"] }}</td><td>{{ r["numero"] }}</td>
@@ -11,8 +12,13 @@
       <td>{{ r["n_lignes"] }}</td>
       <td class="{{ 'en_revue' if r['n_rouge'] else 'ingeree' }}">{{ r["n_rouge"] }}</td>
       <td>{% if r["reconciliation_ok"] == 0 %}<span class="badge b-danger">⚠ à vérifier</span>{% else %}<span class="badge b-ok">OK</span>{% endif %}</td>
+      <td>{% if r["n_meme_numero"] and r["n_meme_numero"] > 1 %}<span class="badge b-danger">⚠ doublon</span>{% endif %}</td>
       <td><a href="/facture/{{ r['id'] }}">Ouvrir</a></td>
     </tr>
   {% endfor %}
 </table>
+<p style="color:var(--grey); font-size:.88rem;">⚠ <strong>Doublon</strong> = ce numéro de facture a été importé plusieurs fois. Risque de double facturation : supprimez l'import en trop (⚙ Réglages) avant de générer.</p>
+{% else %}
+<p style="color:var(--grey); padding:1rem 0;">Aucune facture LGPI pour l'instant — importez une facture LGO à l'<a href="/retro">étape 2</a>.</p>
+{% endif %}
 {% endblock %}

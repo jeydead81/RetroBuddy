@@ -10,6 +10,8 @@
         <td>{{ r["designation"] }}</td><td>{{ r["code"] }}</td><td>{{ r["qte"] }}</td>
         <td>{{ r["tva"] }}</td><td>{{ r["prix_net"] }}</td>
         <td>{{ ui.badge(r["statut_ecart"]) }}</td></tr>
+  {% else %}
+    <tr><td colspan="9" style="color:var(--grey); padding:1rem;">Aucune ligne — importez une facture LGO à l'<a href="/retro">étape 2</a>.</td></tr>
   {% endfor %}
 </table>
 {% endblock %}

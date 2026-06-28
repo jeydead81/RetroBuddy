@@ -40,6 +40,8 @@
       {% endif %}
     </td>
   </tr>
+  {% else %}
+  <tr><td colspan="12" style="color:var(--grey); padding:1rem;">Aucun écart à résoudre — tout est validé, ou aucune facture LGO n'est encore importée.</td></tr>
   {% endfor %}
 </table>
 
