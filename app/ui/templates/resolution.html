@@ -5,12 +5,22 @@
 <p style="display:flex; align-items:center; gap:.6rem; flex-wrap:wrap;">
   <span class="badge b-danger">À compléter : {{ compteurs.rouge }}</span>
   <span class="badge b-warn">À confirmer : {{ compteurs.a_confirmer }}</span>
-  <span class="badge b-ok">Auto-validées : {{ compteurs.auto }}</span>
+  <span class="badge b-ok">Rapprochées auto : {{ compteurs.auto }}</span>
+  {% if compteurs.manuel %}<span class="badge b-info">Complétées à la main : {{ compteurs.manuel }}</span>{% endif %}
   <button onclick="rematch()">↻ Re-rapprocher</button>
 </p>
+{% set faits = compteurs.auto + compteurs.manuel %}
 <div class="barre-fond">
-  <div class="barre-jauge" style="width: {{ (100 * compteurs.auto / compteurs.total) if compteurs.total else 0 }}%"></div>
+  <div class="barre-jauge" style="width: {{ (100 * faits / compteurs.total) if compteurs.total else 0 }}%"></div>
 </div>
+<p style="color:var(--grey); font-size:.9rem; margin:.3rem 0 0;">{{ faits }} / {{ compteurs.total }} lignes rapprochées.</p>
+
+<form method="get" style="display:flex; gap:.5rem; margin:.8rem 0; flex-wrap:wrap;">
+  <input type="search" name="q" value="{{ q }}"
+         placeholder="Rechercher : désignation, code, BL…" style="flex:1; min-width:260px;">
+  <button type="submit">Rechercher</button>
+  {% if q %}<a href="/resolution"><button type="button">Effacer</button></a>{% endif %}
+</form>
 
 <table id="table-resolution">
   <tr>
@@ -41,9 +51,18 @@
     </td>
   </tr>
   {% else %}
-  <tr><td colspan="12" style="color:var(--grey); padding:1rem;">Aucun écart à résoudre — tout est validé, ou aucune facture LGO n'est encore importée.</td></tr>
+  <tr><td colspan="12" style="color:var(--grey); padding:1rem;">{% if q %}Aucun résultat pour « {{ q }} ».{% else %}Aucun écart à résoudre — tout est validé, ou aucune facture LGO n'est encore importée.{% endif %}</td></tr>
   {% endfor %}
 </table>
+
+{% if total > taille %}
+<p style="display:flex; gap:.9rem; align-items:center; flex-wrap:wrap; color:var(--grey); margin-top:.6rem;">
+  <span>{{ (page-1)*taille + 1 }}–{{ [page*taille, total]|min }} sur {{ total }}</span>
+  {% if page > 1 %}<a href="?q={{ q|urlencode }}&page={{ page-1 }}">‹ Précédent</a>{% endif %}
+  <span>page {{ page }} / {{ pages }}</span>
+  {% if page < pages %}<a href="?q={{ q|urlencode }}&page={{ page+1 }}">Suivant ›</a>{% endif %}
+</p>
+{% endif %}
 
 <script>
 const LBL = { resolu: ["Validé", "b-ok"], orange: ["À confirmer", "b-warn"], rouge: ["À compléter", "b-danger"] };

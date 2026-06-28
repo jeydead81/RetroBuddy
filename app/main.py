@@ -245,22 +245,30 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
         if f is None:
             return RedirectResponse("/factures", status_code=303)
         lignes = c.execute(
-            "SELECT code, type_code, code_interne, designation, qte, prix_net, "
-            "montant_ht, checksum_ok, valide FROM lignes_facture "
-            "WHERE facture_id=? ORDER BY id", (fid,)).fetchall()
+            "SELECT code, type_code, code_interne, designation, qte, prix_brut, "
+            "remise_pct, prix_net, montant_ht, checksum_ok, valide, motif_ligne "
+            "FROM lignes_facture WHERE facture_id=? ORDER BY id", (fid,)).fetchall()
         # Cohérence par ligne : qté×PA net ≈ montant HT -> repère la ligne fautive.
-        details, somme = [], 0.0
+        # Si le PA net n'a pas été extrait (facture sans colonne "net"), on le signale
+        # comme « manquant » plutôt qu'incohérent (ce n'est pas une erreur de montant).
+        details, somme, n_au_ref = [], 0.0, 0
         for l in lignes:
-            mt = l["montant_ht"]
-            attendu = (l["qte"] or 0) * (l["prix_net"] or 0)
-            incoherent = mt is not None and abs(attendu - mt) > max(0.02, abs(mt) * 0.01)
+            mt, net = l["montant_ht"], l["prix_net"]
+            attendu = (l["qte"] or 0) * (net or 0)
+            net_manquant = net is None and mt is not None and abs(mt) > 0
+            incoherent = (net is not None and mt is not None
+                          and abs(attendu - mt) > max(0.02, abs(mt) * 0.01))
             if mt is not None:
                 somme += mt
-            details.append({"l": l, "attendu": round(attendu, 2), "incoherent": incoherent})
+            if l["valide"]:
+                n_au_ref += 1
+            details.append({"l": l, "attendu": round(attendu, 2),
+                            "incoherent": incoherent, "net_manquant": net_manquant})
         ta = f["total_affiche"]
         ecart = round(somme - ta, 2) if ta is not None else None
         return TEMPLATES.TemplateResponse(request, "facture_labo.html", {
-            "f": f, "details": details, "somme": round(somme, 2), "ecart": ecart})
+            "f": f, "details": details, "somme": round(somme, 2), "ecart": ecart,
+            "n_au_ref": n_au_ref})
 
     @app.post("/facture-labo/{fid}/integrer")
     def integrer_facture_labo(fid: int):
@@ -368,22 +376,35 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
             "page": page, "pages": pages, "total": total, "taille": TAILLE_PAGE})
 
     @app.get("/resolution", response_class=HTMLResponse)
-    def resolution(request: Request):
-        rows = conn().execute(
+    def resolution(request: Request, q: str = "", page: int = 1):
+        q = q.strip()
+        c = conn()
+        conds, params = ["l.statut_ecart IN ('rouge', 'orange')"], []
+        if q:
+            like = f"%{q}%"
+            conds.append("(l.designation LIKE ? OR l.code LIKE ? OR l.bl_numero LIKE ?)")
+            params += [like, like, like]
+        where = "WHERE " + " AND ".join(conds)
+        total = c.execute(f"SELECT COUNT(*) n FROM retro_lignes l {where}", params).fetchone()["n"]
+        pages = max(1, (total + TAILLE_PAGE - 1) // TAILLE_PAGE)
+        page = max(1, min(page, pages))
+        rows = c.execute(
             "SELECT l.id, l.designation, l.code, l.code_resolu, l.qte, l.tva, "
             "l.bl_numero, l.bl_date, l.prix_brut, l.remise_pct, l.prix_net, l.ug, "
-            "l.score_match, l.statut_ecart, l.valide_utilisateur "
-            "FROM retro_lignes l "
-            "WHERE l.statut_ecart IN ('rouge', 'orange') ORDER BY l.id").fetchall()
-        n_rouge = sum(1 for r in rows if r["statut_ecart"] == "rouge")
-        n_orange_a_confirmer = sum(
-            1 for r in rows if r["statut_ecart"] == "orange" and not r["valide_utilisateur"])
-        n_auto = sum(
-            1 for r in rows if r["statut_ecart"] == "orange" and r["valide_utilisateur"])
-        compteurs = {"rouge": n_rouge, "a_confirmer": n_orange_a_confirmer,
-                     "auto": n_auto, "total": len(rows)}
-        return TEMPLATES.TemplateResponse(
-            request, "resolution.html", {"rows": rows, "compteurs": compteurs})
+            f"l.score_match, l.statut_ecart, l.valide_utilisateur FROM retro_lignes l {where} "
+            "ORDER BY l.id LIMIT ? OFFSET ?", params + [TAILLE_PAGE, (page - 1) * TAILLE_PAGE]).fetchall()
+        # Compteurs globaux (toutes les lignes, indépendants de la recherche / page).
+        def _n(cond):
+            return c.execute(f"SELECT COUNT(*) n FROM retro_lignes WHERE {cond}").fetchone()["n"]
+        n_rouge = _n("statut_ecart='rouge'")
+        n_orange = _n("statut_ecart='orange' AND COALESCE(valide_utilisateur,0)=0")
+        n_auto = _n("statut_ecart='resolu' AND COALESCE(saisie_manuelle,0)=0")
+        n_manuel = _n("statut_ecart='resolu' AND saisie_manuelle=1")
+        compteurs = {"rouge": n_rouge, "a_confirmer": n_orange, "auto": n_auto,
+                     "manuel": n_manuel, "total": n_rouge + n_orange + n_auto + n_manuel}
+        return TEMPLATES.TemplateResponse(request, "resolution.html", {
+            "rows": rows, "compteurs": compteurs, "q": q, "page": page,
+            "pages": pages, "total": total, "taille": TAILLE_PAGE})
 
     @app.post("/resolution/ligne/{ligne_id}")
     def resolution_enregistrer(ligne_id: int, payload: dict):

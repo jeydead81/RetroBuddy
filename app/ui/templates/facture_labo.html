@@ -4,11 +4,15 @@
 <style>
   .carte{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
     padding:1.1rem 1.3rem; margin:1rem 0; box-shadow:var(--shadow); }
-  .meta{ display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:.5rem .9rem; }
+  .meta{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:.5rem .9rem; }
+  .meta div{ min-width:0; overflow-wrap:anywhere; }   /* évite que le nom de fichier déborde */
   .meta .k{ color:var(--grey); font-size:.82rem; }
   .ecart-ok{ color:#166534; font-weight:700; } .ecart-ko{ color:#991B1B; font-weight:700; }
   tr.incoherent td{ background:#FEF2F2; }
+  tr.net-manquant td{ background:#FFFBEB; }
   .pastille{ font-size:.78rem; color:#991B1B; font-weight:600; white-space:nowrap; }
+  .pastille-warn{ font-size:.78rem; color:#B45309; font-weight:600; white-space:nowrap; }
+  .note{ font-size:.74rem; color:var(--grey); }
 </style>
 
 <p><a href="/factures">← Factures laboratoires</a></p>
@@ -36,25 +40,33 @@
     {% elif ecart <= 0.02 and ecart >= -0.02 %}<span class="ecart-ok">{{ "%.2f"|format(ecart) }} € ✓</span>
     {% else %}<span class="ecart-ko">{{ "%.2f"|format(ecart) }} € — à vérifier</span>{% endif %}
   </p>
+  {% if n_au_ref %}
+    <p style="margin:.4rem 0 0; color:#166534; font-size:.92rem;">✓ {{ n_au_ref }} ligne(s) versée(s) au référentiel.</p>
+  {% elif f["statut"] == "ingeree" %}
+    <p style="margin:.4rem 0 0; color:#991B1B; font-weight:600;">⚠ Ingérée, mais <strong>aucun prix versé au référentiel</strong>
+       (PA net non extrait) — cette facture n'aidera pas au rapprochement des rétro.</p>
+  {% endif %}
 </div>
 
 <table>
-  <tr><th>Code</th><th>Type</th><th>Désignation</th><th>Qté</th><th>PA net</th>
-      <th>Montant HT</th><th>Qté×net attendu</th><th>Au réf. ?</th></tr>
+  <tr><th>Code</th><th>Type</th><th>Désignation</th><th>Qté</th><th>PA brut</th><th>Remise %</th>
+      <th>PA net</th><th>Montant HT</th><th>Qté×net attendu</th><th>Au réf. ?</th></tr>
   {% for d in details %}
   {% set l = d.l %}
-  <tr class="{{ 'incoherent' if d.incoherent else '' }}">
+  <tr class="{{ 'incoherent' if d.incoherent else ('net-manquant' if d.net_manquant else '') }}">
     <td>{{ l["code"] or l["code_interne"] or "—" }}{% if l["checksum_ok"] == 0 and l["code"] %} <span class="pastille">code ?</span>{% endif %}</td>
     <td>{{ l["type_code"] or "" }}</td>
     <td>{{ l["designation"] }}</td>
     <td>{{ l["qte"] if l["qte"] is not none else "" }}</td>
-    <td>{{ "%.4f"|format(l["prix_net"]) if l["prix_net"] is not none else "" }}</td>
+    <td>{{ "%.4f"|format(l["prix_brut"]) if l["prix_brut"] is not none else "" }}</td>
+    <td>{{ "%.2f"|format(l["remise_pct"]) if l["remise_pct"] is not none else "" }}</td>
+    <td>{% if l["prix_net"] is not none %}{{ "%.4f"|format(l["prix_net"]) }}{% else %}<span class="pastille-warn">manquant</span>{% endif %}</td>
     <td>{{ "%.2f"|format(l["montant_ht"]) if l["montant_ht"] is not none else "" }}</td>
-    <td>{{ "%.2f"|format(d.attendu) }}{% if d.incoherent %} <span class="pastille">≠ montant</span>{% endif %}</td>
-    <td>{% if l["valide"] %}✓{% else %}<span style="color:var(--grey);">non</span>{% endif %}</td>
+    <td>{% if d.net_manquant %}<span class="pastille-warn">PA net non extrait</span>{% else %}{{ "%.2f"|format(d.attendu) }}{% if d.incoherent %} <span class="pastille">≠ montant</span>{% endif %}{% endif %}</td>
+    <td>{% if l["valide"] %}✓{% else %}<span style="color:var(--grey);">non</span>{% if l["motif_ligne"] %}<br><span class="note">{{ l["motif_ligne"] }}</span>{% endif %}{% endif %}</td>
   </tr>
   {% else %}
-  <tr><td colspan="8" style="color:var(--grey); padding:1rem;">Aucune ligne extraite.</td></tr>
+  <tr><td colspan="10" style="color:var(--grey); padding:1rem;">Aucune ligne extraite.</td></tr>
   {% endfor %}
 </table>
 

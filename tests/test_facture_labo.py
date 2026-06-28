@@ -73,6 +73,22 @@ def test_integrer_ignore_lignes_non_valides(tmp_path):
     assert [r["code"] for r in ref] == ["3400930000007"]
 
 
+def test_facture_ingere_sans_prix_net_signale(tmp_path):
+    # Cas PiLeJe : montant présent mais PA net non extrait -> 0 prix au référentiel.
+    client = _client(tmp_path)
+    c = get_connection(client.app.state.db_path)
+    c.execute("INSERT INTO factures (id, fichier, statut, total_affiche) "
+              "VALUES (1, 'pileje.pdf', 'ingeree', 140.53)")
+    c.execute("INSERT INTO lignes_facture (facture_id, code_interne, designation, qte, "
+              "prix_brut, remise_pct, montant_ht, valide) "
+              "VALUES (1, '6316863', 'CHRONOBIANE', 12, 16.73, 30.0, 140.53, 0)")
+    c.commit()
+    d = client.get("/facture-labo/1").text
+    assert "PA net non extrait" in d                   # pas un faux « ≠ montant »
+    assert "aucun prix versé au référentiel" in d      # bandeau d'alerte
+    assert "30.00" in d                                 # remise affichée
+
+
 def test_detail_inexistant_redirige(tmp_path):
     client = _client(tmp_path)
     r = client.get("/facture-labo/999", follow_redirects=False)
