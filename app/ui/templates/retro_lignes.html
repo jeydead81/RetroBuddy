@@ -3,15 +3,24 @@
 {% block contenu %}
 <h1>Lignes de rétrocession</h1>
 
+<p style="display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; margin:.2rem 0 .8rem;">
+  <span style="color:var(--grey); font-size:.9rem;">Filtrer :</span>
+  <a href="?q={{ q|urlencode }}&periode={{ periode|urlencode }}&statut=resolu" style="text-decoration:none;{% if statut=='resolu' %} font-weight:700;{% endif %}"><span class="badge b-ok">Rapprochées : {{ compteurs.resolu }}</span></a>
+  <a href="?q={{ q|urlencode }}&periode={{ periode|urlencode }}&statut=orange" style="text-decoration:none;{% if statut=='orange' %} font-weight:700;{% endif %}"><span class="badge b-warn">À confirmer : {{ compteurs.orange }}</span></a>
+  <a href="?q={{ q|urlencode }}&periode={{ periode|urlencode }}&statut=rouge" style="text-decoration:none;{% if statut=='rouge' %} font-weight:700;{% endif %}"><span class="badge b-danger">À compléter : {{ compteurs.rouge }}</span></a>
+  {% if statut %}<a href="?q={{ q|urlencode }}&periode={{ periode|urlencode }}" style="margin-left:.3rem;">✕ tous</a>{% endif %}
+</p>
+
 <form method="get" style="display:flex; gap:.5rem; margin:.4rem 0 1rem; flex-wrap:wrap; align-items:center;">
   <input type="search" name="q" value="{{ q }}"
          placeholder="Rechercher : désignation, code, n° facture, BL…" style="flex:1; min-width:240px;">
+  <input type="hidden" name="statut" value="{{ statut }}">
   <select name="periode" onchange="this.form.submit()">
     <option value="">Tous les mois</option>
     {% for val, lab in mois %}<option value="{{ val }}"{{ ' selected' if val == periode else '' }}>{{ lab }}</option>{% endfor %}
   </select>
   <button type="submit">Rechercher</button>
-  {% if q or periode %}<a href="/retro-lignes"><button type="button">Effacer</button></a>{% endif %}
+  {% if q or periode %}<a href="?statut={{ statut }}"><button type="button">Effacer</button></a>{% endif %}
 </form>
 
 <table>
@@ -30,9 +39,9 @@
 {% if total > taille %}
 <p style="display:flex; gap:.9rem; align-items:center; flex-wrap:wrap; color:var(--grey);">
   <span>{{ (page-1)*taille + 1 }}–{{ [page*taille, total]|min }} sur {{ total }}</span>
-  {% if page > 1 %}<a href="?q={{ q|urlencode }}&periode={{ periode|urlencode }}&page={{ page-1 }}">‹ Précédent</a>{% endif %}
+  {% if page > 1 %}<a href="?q={{ q|urlencode }}&periode={{ periode|urlencode }}&statut={{ statut }}&page={{ page-1 }}">‹ Précédent</a>{% endif %}
   <span>page {{ page }} / {{ pages }}</span>
-  {% if page < pages %}<a href="?q={{ q|urlencode }}&periode={{ periode|urlencode }}&page={{ page+1 }}">Suivant ›</a>{% endif %}
+  {% if page < pages %}<a href="?q={{ q|urlencode }}&periode={{ periode|urlencode }}&statut={{ statut }}&page={{ page+1 }}">Suivant ›</a>{% endif %}
 </p>
 {% endif %}
 {% endblock %}

@@ -42,6 +42,34 @@ def test_resolution_recherche(tmp_path):
     assert "DOLIPRANE 1000" not in t                   # filtré
 
 
+def test_retro_lignes_compteurs_et_filtre(tmp_path):
+    client = _client(tmp_path)
+    c = get_connection(client.app.state.db_path)
+    c.execute("INSERT INTO retro_documents (id, fichier, numero) VALUES (1, 'r.pdf', 'F1')")
+    _ligne(c, "AUTO", "resolu")
+    _ligne(c, "ROUGE1", "rouge")
+    _ligne(c, "ROUGE2", "rouge")
+    c.commit()
+    t = client.get("/retro-lignes").text
+    assert "Rapprochées : 1" in t
+    assert "À compléter : 2" in t
+    fr = client.get("/retro-lignes?statut=rouge").text       # filtre clic-bouton
+    assert "ROUGE1" in fr and "ROUGE2" in fr
+    assert "AUTO" not in fr                                   # rapprochée -> exclue du filtre
+
+
+def test_factures_lgpi_colonne_rapprochees(tmp_path):
+    client = _client(tmp_path)
+    c = get_connection(client.app.state.db_path)
+    c.execute("INSERT INTO retro_documents (id, fichier, numero) VALUES (1, 'r.pdf', 'F1')")
+    _ligne(c, "A", "resolu")
+    _ligne(c, "B", "rouge")
+    c.commit()
+    t = client.get("/factures-retro").text
+    assert "Rapprochées" in t
+    assert "1 / 2" in t                                       # 1 résolue sur 2 lignes
+
+
 def test_resolution_pagination(tmp_path):
     client = _client(tmp_path)
     c = get_connection(client.app.state.db_path)

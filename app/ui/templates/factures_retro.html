@@ -16,12 +16,13 @@
 {% if rows %}
 <table>
   <tr><th>#</th><th>Numéro</th><th>Émettrice</th><th>Destinataire</th><th>Lignes</th>
-      <th>À compléter</th><th>Contrôle total</th><th>Doublon</th><th></th></tr>
+      <th>Rapprochées</th><th>À compléter</th><th>Contrôle total</th><th>Doublon</th><th></th></tr>
   {% for r in rows %}
     <tr>
       <td>{{ r["id"] }}</td><td>{{ r["numero"] }}</td>
       <td>{{ r["pharmacie_emettrice"] }}</td><td>{{ r["pharmacie_destinataire"] }}</td>
       <td>{{ r["n_lignes"] }}</td>
+      <td class="{{ 'ingeree' if r['n_lignes'] and r['n_resolu'] == r['n_lignes'] else '' }}">{{ r["n_resolu"] or 0 }} / {{ r["n_lignes"] }}</td>
       <td class="{{ 'en_revue' if r['n_rouge'] else 'ingeree' }}">{{ r["n_rouge"] }}</td>
       <td>{% if r["reconciliation_ok"] == 0 %}<span class="badge b-danger">⚠ à vérifier</span>{% else %}<span class="badge b-ok">OK</span>{% endif %}</td>
       <td>{% if r["n_meme_numero"] and r["n_meme_numero"] > 1 %}<span class="badge b-danger">⚠ doublon</span>{% endif %}</td>

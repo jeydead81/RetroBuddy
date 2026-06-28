@@ -396,7 +396,8 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
         return _ingerer_retro_un(fichier, extractor)
 
     @app.get("/retro-lignes", response_class=HTMLResponse)
-    def retro_lignes(request: Request, q: str = "", periode: str = "", page: int = 1):
+    def retro_lignes(request: Request, q: str = "", periode: str = "", page: int = 1,
+                     statut: str = ""):
         q = q.strip()
         conds, params = [], []
         if q:
@@ -407,11 +408,23 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
         if len(periode) == 7:
             conds.append("l.bl_date LIKE ?")
             params.append(f"%/{periode[5:7]}/{periode[:4]}")
-        where = ("WHERE " + " AND ".join(conds)) if conds else ""
         c = conn()
+        # Compteurs par statut sur le périmètre courant (recherche + mois).
+        def _cnt(st):
+            w = "WHERE " + " AND ".join(conds + ["l.statut_ecart = ?"])
+            return c.execute(
+                "SELECT COUNT(*) n FROM retro_lignes l "
+                f"JOIN retro_documents d ON d.id = l.retro_id {w}", params + [st]).fetchone()["n"]
+        compteurs = {s: _cnt(s) for s in ("resolu", "orange", "rouge")}
+        # Filtre statut éventuel pour le listing.
+        lconds, lparams = list(conds), list(params)
+        if statut in ("resolu", "orange", "rouge"):
+            lconds.append("l.statut_ecart = ?")
+            lparams.append(statut)
+        where = ("WHERE " + " AND ".join(lconds)) if lconds else ""
         total = c.execute(
             "SELECT COUNT(*) n FROM retro_lignes l "
-            f"JOIN retro_documents d ON d.id = l.retro_id {where}", params).fetchone()["n"]
+            f"JOIN retro_documents d ON d.id = l.retro_id {where}", lparams).fetchone()["n"]
         pages = max(1, (total + TAILLE_PAGE - 1) // TAILLE_PAGE)
         page = max(1, min(page, pages))
         rows = c.execute(
@@ -419,9 +432,9 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
             "l.tva, l.prix_net, l.statut_ecart "
             f"FROM retro_lignes l JOIN retro_documents d ON d.id = l.retro_id {where} "
             "ORDER BY l.id LIMIT ? OFFSET ?",
-            params + [TAILLE_PAGE, (page - 1) * TAILLE_PAGE]).fetchall()
+            lparams + [TAILLE_PAGE, (page - 1) * TAILLE_PAGE]).fetchall()
         return TEMPLATES.TemplateResponse(request, "retro_lignes.html", {
-            "rows": rows, "q": q, "periode": periode,
+            "rows": rows, "q": q, "periode": periode, "statut": statut, "compteurs": compteurs,
             "mois": _mois_disponibles(c, "retro_lignes", "bl_date"),
             "page": page, "pages": pages, "total": total, "taille": TAILLE_PAGE})
 
@@ -570,6 +583,7 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
         rows = c.execute(
             "SELECT d.id, d.numero, d.pharmacie_emettrice, d.pharmacie_destinataire, "
             "d.reconciliation_ok, COUNT(l.id) n_lignes, "
+            "SUM(CASE WHEN l.statut_ecart='resolu' THEN 1 ELSE 0 END) n_resolu, "
             "SUM(CASE WHEN l.statut_ecart='rouge' THEN 1 ELSE 0 END) n_rouge, "
             "(SELECT COUNT(*) FROM retro_documents d2 WHERE d2.numero = d.numero "
             " AND d.numero IS NOT NULL) AS n_meme_numero "
