@@ -15,14 +15,15 @@ RÈGLES IMPÉRATIVES :
 5. TVA : c'est le TAUX TVA de la colonne "Taux TVA" (l'une des valeurs 2,1 / 5,5 / 10 /
    20). ATTENTION : sur les lignes remisées il y a DEUX pourcentages — le premier est la
    REMISE, le second est le TAUX TVA. Ne JAMAIS confondre : tva = le Taux TVA.
-6. Pour un CONTRÔLE DE COMPLÉTUDE (et seulement ça), extraire AUSSI :
-   - par ligne : montant_ht = le DERNIER nombre de la ligne (colonne "Montant", le HT
-     de la ligne) ;
+6. Pour des CONTRÔLES DE COHÉRENCE (et seulement ça — ces valeurs ne sont PAS le prix de
+   rétrocession, qui est recalculé ailleurs depuis le référentiel), extraire AUSSI :
+   - par ligne : montant_ht = le DERNIER nombre de la ligne (colonne "Montant"), et
+     prix_net_lgo = le "Prix unitaire Net" (le nombre situé JUSTE AVANT le Taux TVA) ;
    - en-tête : total_ht_affiche = le "Total HT" du RÉCAP en bas (à côté de "Total TVA"
-     et "Total TTC"), PAS l'en-tête de colonne "Total HT" répété en haut des pages.
-   Ces deux montants servent UNIQUEMENT à vérifier qu'aucune ligne n'a été oubliée. Ce
-   ne sont PAS le prix de rétrocession (celui-ci est recalculé ailleurs, depuis le
-   référentiel). N'extraire AUCUNE autre colonne (PUHT, % Remise, Montant Remise,
-   Prix unitaire Net).
+     et "Total TTC"), PAS l'en-tête de colonne "Total HT" répété en haut des pages ;
+   - en-tête : ventilation = la liste des lignes du bloc récap
+     "Montant HT | Taux TVA | Montant TVA | Montant TTC", soit une entrée
+     {taux, montant_ht} par taux de TVA (le "Montant HT" de chaque taux).
+   N'extraire AUCUNE autre colonne (PUHT, % Remise, Montant Remise).
 
 Réponds UNIQUEMENT avec le JSON conforme au schéma fourni.

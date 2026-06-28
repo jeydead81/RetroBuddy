@@ -17,22 +17,54 @@ class ResultatRetro:
 
 
 def _reconcilier(retro):
-    """Contrôle de complétude : Σ(montant HT des lignes) == Total HT affiché ?
+    """Contrôles de cohérence de l'extraction. Au premier échec -> motif explicite.
 
-    Tolérance = arrondi cumulé (~0,005 €/ligne), très en-dessous d'une ligne réelle
-    (plusieurs €) : une ligne oubliée est détectée sans fausse alerte d'arrondi.
+    N1 — complétude : Σ(montant HT lignes) == Total HT affiché (aucune ligne oubliée).
+    N3 — ligne : qté × prix net == montant (attrape une qté mal lue).
+    N2 — TVA : Σ(montant HT par taux) == Montant HT du taux dans la ventilation LGO
+              (attrape une TVA mal affectée).
+    Tolérance = arrondi cumulé (~0,005 €/ligne), très en-dessous d'une ligne réelle.
     Retourne (ok: bool, total_calcule: float|None, motif: str|None).
     """
+    lignes = retro.lignes
     total = retro.entete.total_ht_affiche
     if total is None:
         return False, None, "Total HT introuvable sur la facture"
-    if any(l.montant_ht is None for l in retro.lignes):
-        return False, None, "montant absent sur au moins une ligne"
-    somme = round(sum(l.montant_ht for l in retro.lignes), 2)
-    tol = round(0.02 + 0.005 * len(retro.lignes), 2)
-    if abs(somme - total) <= tol:
-        return True, somme, None
-    return False, somme, f"écart de total : {somme} calculé vs {total} affiché"
+    if any(l.montant_ht is None for l in lignes):
+        return False, None, "montant HT absent sur au moins une ligne"
+    somme = round(sum(l.montant_ht for l in lignes), 2)
+
+    # N1 — complétude
+    if abs(somme - total) > round(0.02 + 0.005 * len(lignes), 2):
+        return False, somme, f"écart de total : {somme} calculé vs {total} affiché"
+
+    # N3 — cohérence ligne (qté × prix net == montant)
+    for l in lignes:
+        if l.qte is None or l.prix_net_lgo is None:
+            return False, somme, "qté ou prix net manquant pour le contrôle ligne"
+        if abs(round(l.qte * l.prix_net_lgo, 2) - l.montant_ht) > 0.02:
+            return False, somme, f"ligne incohérente (qté×prix ≠ montant) : {l.designation}"
+
+    # N2 — cohérence TVA (Σ par taux == ventilation)
+    if not retro.entete.ventilation:
+        return False, somme, "ventilation TVA absente de la facture"
+    par_taux = {}
+    for l in lignes:
+        if l.tva is None:
+            return False, somme, f"taux TVA absent : {l.designation}"
+        k = round(l.tva, 2)
+        par_taux[k] = round(par_taux.get(k, 0.0) + l.montant_ht, 2)
+    taux_ventiles = {round(v.taux, 2) for v in retro.entete.ventilation}
+    for k in par_taux:
+        if k not in taux_ventiles:
+            return False, somme, f"taux TVA {k}% sur des lignes mais absent de la ventilation"
+    for v in retro.entete.ventilation:
+        k = round(v.taux, 2)
+        n_k = sum(1 for l in lignes if round(l.tva, 2) == k)
+        if abs(par_taux.get(k, 0.0) - v.montant_ht) > round(0.02 + 0.005 * n_k, 2):
+            return False, somme, f"écart TVA {v.taux}% : {par_taux.get(k, 0.0)} vs {v.montant_ht} affiché"
+
+    return True, somme, None
 
 
 def traiter_retro(conn, pdf, extractor, config) -> ResultatRetro:

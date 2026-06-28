@@ -1,7 +1,7 @@
 from app.db import get_connection, init_db
 from app.temps1.extraction_ia import MockExtractor
 from app.temps1.pdf_reader import PdfDocument
-from app.temps2.schemas import RetroEntete, RetroExtrait, RetroLigne
+from app.temps2.schemas import RetroEntete, RetroExtrait, RetroLigne, VentilationTvaLgo
 from app.temps2.traitement_retro import traiter_retro
 
 CFG = {"model_defaut": "claude-sonnet-4-6", "model_escalade": "claude-opus-4-8"}
@@ -25,22 +25,32 @@ def _pdf():
     return PdfDocument(nom="retro.pdf", base64="", taille_octets=0)
 
 
-def _retro(lignes, total=None):
-    # Par défaut le total affiché = Σ des montants de ligne -> réconcilie (pas d'escalade).
+def _retro(lignes, total=None, ventilation=None):
+    # Par défaut tout réconcilie (total + ventilation déduits des lignes) -> pas d'escalade.
     if total is None:
         total = round(sum((l.montant_ht or 0) for l in lignes), 2)
+    if ventilation is None:
+        par = {}
+        for l in lignes:
+            k = round(l.tva, 2)
+            par[k] = round(par.get(k, 0.0) + (l.montant_ht or 0), 2)
+        ventilation = [VentilationTvaLgo(taux=k, montant_ht=v) for k, v in par.items()]
     return RetroExtrait(
         type_document="retro_lgo",
         entete=RetroEntete(pharmacie_emettrice="SERALY",
                            pharmacie_destinataire="CENON",
                            date_vente="22/09/2025", numero="N1",
-                           total_ht_affiche=total),
+                           total_ht_affiche=total, ventilation=ventilation),
         lignes=lignes)
 
 
-def _ligne(code, bl_date, bl_numero="28476", montant_ht=10.0):
-    return RetroLigne(designation="X", code=code, type_code="CIP13", qte=1,
-                      tva=10.0, bl_numero=bl_numero, bl_date=bl_date, montant_ht=montant_ht)
+def _ligne(code, bl_date, bl_numero="28476", montant_ht=10.0, qte=1, tva=10.0,
+           prix_net_lgo=None):
+    if prix_net_lgo is None:                      # par défaut qté × prix = montant (cohérent)
+        prix_net_lgo = round(montant_ht / qte, 4) if qte else montant_ht
+    return RetroLigne(designation="X", code=code, type_code="CIP13", qte=qte,
+                      tva=tva, bl_numero=bl_numero, bl_date=bl_date,
+                      montant_ht=montant_ht, prix_net_lgo=prix_net_lgo)
 
 
 def test_ligne_resolue(tmp_path):
@@ -145,3 +155,24 @@ def test_reconciliation_echec_bloque_la_facture(tmp_path):
     f = construire_facture(conn, res.retro_id)
     assert f.reconciliation_ok is False
     assert f.bloquee is True                                   # bloquée sans aucune ligne rouge
+
+
+def test_n3_qte_incoherente_echoue(tmp_path):
+    conn = _conn(tmp_path)
+    _ref(conn, "3400930000007", "01/08/2025", 4.5)
+    # N1 ok (total = montant) mais qté×prix (2×5=10) != montant (20) -> N3 échoue
+    ligne = _ligne("3400930000007", "10/08/2025", montant_ht=20.0, qte=2, prix_net_lgo=5.0)
+    res = traiter_retro(conn, _pdf(), MockExtractor(defaut=_retro([ligne])), CFG)
+    assert res.reconciliation_ok is False
+    assert "qté" in res.motif_reconciliation
+
+
+def test_n2_tva_incoherente_echoue(tmp_path):
+    conn = _conn(tmp_path)
+    _ref(conn, "3400930000007", "01/08/2025", 4.5)
+    # Ligne cohérente (N1+N3 ok) mais ventilation annonce un autre HT pour le taux -> N2 échoue
+    ligne = _ligne("3400930000007", "10/08/2025")              # tva 10, montant 10
+    retro = _retro([ligne], ventilation=[VentilationTvaLgo(taux=10.0, montant_ht=999.0)])
+    res = traiter_retro(conn, _pdf(), MockExtractor(defaut=retro), CFG)
+    assert res.reconciliation_ok is False
+    assert "TVA" in res.motif_reconciliation
