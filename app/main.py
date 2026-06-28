@@ -208,7 +208,7 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
     COLS_TRI_FACTURES = {
         "id": "id", "fichier": "fichier", "labo": "labo", "type": "type_document",
         "statut": "statut", "motif": "motif", "affiche": "total_affiche",
-        "calcule": "total_calcule", "modele": "modele_extraction"}
+        "calcule": "total_calcule"}
 
     @app.get("/factures", response_class=HTMLResponse)
     def factures(request: Request, q: str = "", page: int = 1,
@@ -228,7 +228,7 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
         page = max(1, min(page, pages))
         rows = c.execute(
             "SELECT id, fichier, labo, type_document, statut, motif, total_affiche, "
-            f"total_calcule, modele_extraction FROM factures {where} "
+            f"total_calcule FROM factures {where} "
             f"ORDER BY {col} {sens.upper()}, id DESC LIMIT ? OFFSET ?",
             params + [TAILLE_PAGE, (page - 1) * TAILLE_PAGE]).fetchall()
         return TEMPLATES.TemplateResponse(request, "factures.html", {
