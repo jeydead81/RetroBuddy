@@ -18,6 +18,16 @@ def _qualifier(facture):
     return [(l, selection.qualifier_ligne(l)) for l in facture.lignes]
 
 
+def _semble_marchandise(facture) -> bool:
+    """Vrai si l'extraction a l'allure d'une facture marchandise : total HT positif
+    et au moins une ligne produit identifiée (code CIP/EAN ou code interne) avec un
+    montant. Sert à ne pas écarter en silence une marchandise mal classée."""
+    if (facture.entete.total_ht_affiche or 0) <= 0:
+        return False
+    return any((l.code or l.code_interne) and ((l.montant_ht or 0) > 0 or (l.prix_net or 0) > 0)
+               for l in facture.lignes)
+
+
 def _persister(conn, pdf, facture, statut, motif, modele, total_calcule, qualifs, cout):
     cur = conn.execute(
         """
@@ -56,9 +66,24 @@ def traiter_facture(conn, pdf, extractor, config) -> Resultat:
     modele = config["model_defaut"]
     facture = extractor.extraire(pdf, modele)
     cout += getattr(extractor, "dernier_cout", 0.0)
-    qualifs = _qualifier(facture)
-
     dec, motif = classifier.decision(facture)
+
+    # Filet anti-abandon silencieux : un "ignorer" alors que l'extraction contient des
+    # lignes produit chiffrées est suspect (souvent une marchandise parapharma mal
+    # classée en abonnement). On demande un 2e avis Opus ; s'il confirme l'« ignorer »,
+    # on met EN REVUE (signalé) plutôt qu'ignoré — jamais écarté en silence.
+    if dec == "ignorer" and _semble_marchandise(facture):
+        modele = config["model_escalade"]
+        facture = extractor.extraire(pdf, modele)
+        cout += getattr(extractor, "dernier_cout", 0.0)
+        dec, motif = classifier.decision(facture)
+        if dec == "ignorer":
+            qualifs = _qualifier(facture)
+            m = f"classé « {motif} » mais contient des lignes produit — à vérifier"
+            fid = _persister(conn, pdf, facture, "en_revue", m, modele, None, qualifs, cout)
+            return Resultat("en_revue", m, fid, None, 0, cout)
+
+    qualifs = _qualifier(facture)
     if dec == "ignorer":
         fid = _persister(conn, pdf, facture, "ignoree", motif, modele, None, qualifs, cout)
         return Resultat("ignoree", motif, fid, None, 0, cout)

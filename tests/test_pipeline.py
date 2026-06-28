@@ -71,6 +71,45 @@ def test_escalade_opus_recupere(tmp_path):
     assert modele["modele_extraction"] == "claude-opus-4-8"
 
 
+def test_abonnement_avec_lignes_produit_passe_en_revue(tmp_path):
+    # Cas Alloga : marchandise parapharma mal classée "abonnement_service" par les DEUX
+    # modèles -> ne doit PAS être ignorée en silence, mais signalée "en revue".
+    conn = _conn(tmp_path)
+    f = _facture(type_document="abonnement_service",
+                 lignes=[_ligne(montant=10.0)], total=10.0)
+    ex = MockExtractor(par_modele={"claude-sonnet-4-6": f, "claude-opus-4-8": f})
+    res = traiter_facture(conn, _pdf(), ex, CFG)
+    assert res.statut == "en_revue"                                  # jamais "ignoree"
+    assert ex.appels == [("f.pdf", "claude-sonnet-4-6"), ("f.pdf", "claude-opus-4-8")]
+    assert conn.execute("SELECT COUNT(*) c FROM referentiel_prix").fetchone()["c"] == 0
+    motif = conn.execute("SELECT motif FROM factures").fetchone()["motif"]
+    assert "ligne" in motif                                          # motif explicite
+
+
+def test_abonnement_mal_classe_recupere_par_opus(tmp_path):
+    # Sonnet se trompe ("abonnement"), Opus rectifie ("facture_marchandise") -> ingérée.
+    conn = _conn(tmp_path)
+    sonnet = _facture(type_document="abonnement_service",
+                      lignes=[_ligne(montant=10.0)], total=10.0)
+    opus = _facture(type_document="facture_marchandise",
+                    lignes=[_ligne(montant=10.0)], total=10.0)
+    ex = MockExtractor(par_modele={"claude-sonnet-4-6": sonnet, "claude-opus-4-8": opus})
+    res = traiter_facture(conn, _pdf(), ex, CFG)
+    assert res.statut == "ingeree"
+    assert res.n_referentiel == 1
+    assert ex.appels[-1] == ("f.pdf", "claude-opus-4-8")
+
+
+def test_vrai_abonnement_sans_lignes_reste_ignore(tmp_path):
+    # Vrai abonnement (aucune ligne produit) -> ignoré, SANS escalade Opus inutile.
+    conn = _conn(tmp_path)
+    f = _facture(type_document="abonnement_service", lignes=[], total=50.0)
+    ex = MockExtractor(defaut=f)
+    res = traiter_facture(conn, _pdf(), ex, CFG)
+    assert res.statut == "ignoree"
+    assert ex.appels == [("f.pdf", "claude-sonnet-4-6")]             # pas d'escalade
+
+
 def test_ligne_checksum_invalide_exclue_du_referentiel(tmp_path):
     conn = _conn(tmp_path)
     # code 13 chiffres à clé invalide → ligne flaggée (suspect), hors référentiel,

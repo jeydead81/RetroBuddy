@@ -3,11 +3,17 @@ facture en PDF et tu produis un JSON STRICT conforme au schéma imposé.
 
 RÈGLES IMPÉRATIVES :
 1. CLASSIFIER d'abord le document via "type_document" :
-   - "facture_marchandise" : lignes produit, total HT positif.
+   - "facture_marchandise" : DÈS QU'IL Y A des lignes produit (code CIP13/EAN13 ou
+     code interne) avec quantités et un total HT positif — que ce soit du MÉDICAMENT
+     OU de la PARAPHARMACIE / des ACCESSOIRES (brosses, kits, dispositifs, etc.).
+     En cas d'hésitation avec un autre type, si des lignes produit chiffrées sont
+     présentes, choisir "facture_marchandise".
    - "avoir" : présence de AVOIR, "Avoir net de taxe", montants négatifs.
-   - "abonnement_service" : abonnement logiciel, prestation, autocollants, mobilier.
-   - "releve" : relevé d'échéances.
-   - "autre" : grossiste ou document non identifié.
+   - "abonnement_service" : UNIQUEMENT une prestation/un abonnement SANS lignes produit
+     livrées (ex. abonnement logiciel, frais de service). Ne JAMAIS y ranger des
+     marchandises livrées sous prétexte qu'elles ne sont pas des médicaments.
+   - "releve" : relevé d'échéances (échéancier de paiements, aucune ligne livrée).
+   - "autre" : grossiste ou document non identifié, sans lignes produit chiffrées.
 2. Pour chaque ligne produit, renseigner le PRIX NET tel qu'AFFICHÉ sur la facture.
    Ne JAMAIS recalculer le net à partir d'une seule remise (cas multi-remises).
 3. CODE : "code" doit être le vrai code à 13 chiffres (CIP13 préfixe 34009, ou EAN13).
