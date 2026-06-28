@@ -42,17 +42,23 @@
   {% endif %}
 </p>
 
+<p style="color:var(--grey); font-size:.88rem;">💡 Les prix (PA brut, Remise %, PA net) sont modifiables directement ci-dessous —
+   modifiez puis <strong>Enregistrer</strong> (une correction ici est conservée, non écrasée par le recalcul).</p>
+
 {% for g in f.groupes %}
   <h3>Bon livraison {{ g.bl_numero or "" }} du {{ g.bl_date or "" }}</h3>
   <table>
     <tr><th>Désignation</th><th>Code</th><th>Qté</th><th>PA brut</th><th>Remise %</th>
-        <th>PA net</th><th>TVA</th><th>Montant HT</th></tr>
+        <th>PA net</th><th>TVA</th><th>Montant HT</th><th></th></tr>
     {% for l in g.lignes %}
-      <tr><td>{{ l.designation }}</td><td>{{ l.code or "" }}</td><td>{{ l.qte }}</td>
-          <td>{{ l.prix_brut if l.prix_brut is not none else "" }}</td>
-          <td>{{ l.remise_pct if l.remise_pct is not none else "" }}</td>
-          <td>{{ l.prix_net }}</td><td>{{ l.tva if l.tva is not none else "" }}</td>
-          <td>{{ l.montant_ht }}</td></tr>
+      <tr data-id="{{ l.id }}" data-ug="{{ l.ug }}">
+          <td>{{ l.designation }}</td><td>{{ l.code or "" }}</td><td class="q">{{ l.qte }}</td>
+          <td><input class="f-brut" type="number" step="0.001" style="width:6rem;" value="{{ l.prix_brut if l.prix_brut is not none else '' }}"></td>
+          <td><input class="f-remise" type="number" step="0.01" style="width:5rem;" value="{{ l.remise_pct if l.remise_pct is not none else '' }}"></td>
+          <td><input class="f-net" type="number" step="0.001" style="width:6rem;" value="{{ l.prix_net if l.prix_net is not none else '' }}"></td>
+          <td>{{ l.tva if l.tva is not none else "" }}</td>
+          <td>{{ l.montant_ht }}</td>
+          <td><button onclick="majLigne(this)">Enregistrer</button></td></tr>
     {% endfor %}
   </table>
 {% endfor %}
@@ -71,6 +77,32 @@
 async function recalculer() {
   const r = await fetch("/facture/{{ f.retro_id }}/recalculer", { method: "POST" });
   if (r.ok) location.reload();
+}
+
+function valLigne(tr, cls) { const v = tr.querySelector(cls).value; return v === "" ? null : parseFloat(v); }
+
+// Recalcul auto du PA net quand PA brut ou remise change.
+document.querySelectorAll("tr[data-id]").forEach(tr => {
+  tr.addEventListener("change", e => {
+    if (!e.target.matches(".f-brut, .f-remise")) return;
+    const qte = parseFloat(tr.querySelector(".q").textContent) || 0;
+    const ug = parseFloat(tr.dataset.ug) || 0;
+    const brut = valLigne(tr, ".f-brut"), remise = valLigne(tr, ".f-remise") || 0;
+    if (brut != null && (qte + ug) > 0)
+      tr.querySelector(".f-net").value = (qte * brut * (1 - remise / 100) / (qte + ug)).toFixed(4);
+  });
+});
+
+async function majLigne(btn) {
+  const tr = btn.closest("tr");
+  const payload = {
+    prix_brut: valLigne(tr, ".f-brut"), remise_pct: valLigne(tr, ".f-remise"),
+    prix_net: valLigne(tr, ".f-net"), ug: parseFloat(tr.dataset.ug) || 0
+  };
+  const r = await fetch(`/resolution/ligne/${tr.dataset.id}`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+  if (r.ok) location.reload();          // reconstruit totaux + ventilation
+  else btn.textContent = "Erreur";
 }
 </script>
 {% endblock %}

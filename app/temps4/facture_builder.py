@@ -11,6 +11,8 @@ class LigneFacturee:
     prix_net: float
     tva: float | None
     montant_ht: float
+    id: int | None = None     # id de la retro_ligne (édition inline sur la facture)
+    ug: float = 0
 
 
 @dataclass
@@ -57,7 +59,7 @@ def construire_facture(conn, retro_id):
     reco_ok = doc["reconciliation_ok"] != 0   # None (anciennes lignes) -> considéré OK
 
     lignes = conn.execute(
-        "SELECT designation, code, qte, prix_brut, remise_pct, prix_net, tva, "
+        "SELECT id, designation, code, qte, prix_brut, remise_pct, prix_net, tva, ug, "
         "bl_numero, bl_date, statut_ecart FROM retro_lignes WHERE retro_id = ? ORDER BY id",
         (retro_id,)).fetchall()
     n_rouge = sum(1 for l in lignes if l["statut_ecart"] == "rouge")
@@ -76,7 +78,8 @@ def construire_facture(conn, retro_id):
         taux = l["tva"] if l["tva"] is not None else 0.0
         bases[taux] = round(bases.get(taux, 0.0) + montant, 2)
         lf = LigneFacturee(l["designation"], l["code"], qte, l["prix_brut"],
-                           l["remise_pct"], prix_net, l["tva"], montant)
+                           l["remise_pct"], prix_net, l["tva"], montant,
+                           id=l["id"], ug=l["ug"] or 0)
         cle = (l["bl_numero"], l["bl_date"])
         if courant is None or (courant.bl_numero, courant.bl_date) != cle:
             courant = GroupeBL(l["bl_numero"], l["bl_date"], [])

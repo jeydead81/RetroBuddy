@@ -38,3 +38,22 @@ def test_export_force_partielle(tmp_path):
     csv = client.get("/facture/1/csv?forcer=1")
     assert "FACTURE PARTIELLE" in csv.text
     assert "1 ligne(s) non rapprochée(s)" in csv.text    # n_rouge = 1
+
+
+def test_facture_lignes_editables(tmp_path):
+    client = _client(tmp_path)
+    c = get_connection(client.app.state.db_path)
+    c.execute("INSERT INTO retro_documents (id, fichier, numero) VALUES (1, 'r.pdf', 'F1')")
+    c.execute("INSERT INTO retro_lignes (id, retro_id, designation, qte, prix_net, tva, "
+              "statut_ecart, bl_numero, bl_date) VALUES "
+              "(7, 1, 'OK', 2, 5.0, 20.0, 'resolu', 'BL1', '01/09/2025')")
+    c.commit()
+    page = client.get("/facture/1").text
+    assert 'data-id="7"' in page                      # id de ligne exposé
+    assert 'class="f-net"' in page                     # champ éditable
+    # édition inline (réutilise l'endpoint résolution) -> persistée + saisie manuelle
+    client.post("/resolution/ligne/7", json={"prix_brut": None, "remise_pct": None,
+                                              "prix_net": 9.99, "ug": 0})
+    row = c.execute("SELECT prix_net, saisie_manuelle FROM retro_lignes WHERE id=7").fetchone()
+    assert row["prix_net"] == 9.99
+    assert row["saisie_manuelle"] == 1                 # ne sera pas écrasée par un recalcul
