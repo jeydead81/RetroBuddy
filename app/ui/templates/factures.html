@@ -4,6 +4,19 @@
 <h1>Factures laboratoires</h1>
 <p><a href="/export-base">⤓ Exporter la base</a></p>
 
+{% if request.query_params.get('recup') %}
+<p style="color:#166534; font-weight:600;">✓ {{ request.query_params.get('recup') }} prix récupérés et versés au référentiel.</p>
+{% endif %}
+{% if n_recup %}
+<div style="background:#FFFBEB; border:1px solid #FDE68A; border-radius:12px; padding:.7rem 1rem; margin:.4rem 0;">
+  <strong>{{ n_recup }} facture(s)</strong> ingérée(s) sans prix exploitable (PA net non extrait).
+  <form action="/factures/recuperer-net" method="post" style="display:inline; margin-left:.4rem;"
+        onsubmit="return confirm('Récupérer les PA net manquants (net = PA brut × (1 − remise)) et les verser au référentiel ?');">
+    <button type="submit">Récupérer les PA net manquants</button>
+  </form>
+</div>
+{% endif %}
+
 <form method="get" style="display:flex; gap:.5rem; margin:.4rem 0 1rem; flex-wrap:wrap;">
   <input type="search" name="q" value="{{ q }}"
          placeholder="Rechercher : fichier, labo, statut, motif, date…" style="flex:1; min-width:260px;">

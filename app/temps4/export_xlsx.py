@@ -14,6 +14,9 @@ def facture_xlsx(facture):
     ws.append(["Émettrice", facture.emettrice or ""])
     ws.append(["Destinataire", facture.destinataire or ""])
     ws.append(["Date", facture.date_vente or ""])
+    if getattr(facture, "n_rouge", 0):
+        ws.append(["FACTURE PARTIELLE",
+                   f"{facture.n_rouge} ligne(s) non rapprochée(s) exclue(s) du total"])
     ws.append([])
 
     ws.append(["BL", "Date BL", "Désignation", "Code", "Qté", "PA brut", "Remise %",

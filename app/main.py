@@ -9,6 +9,7 @@ from app.config import charger_config, enregistrer_cle_api
 from app.db import get_connection, init_db
 from app.temps1.extraction_ia import ClaudeExtractor
 from app.temps1.pdf_reader import lire_pdf
+from app.temps1 import selection
 from app.temps1.pipeline import traiter_facture
 from app.temps1.referentiel import enregistrer_referentiel
 from app.temps1.schemas import LigneFacture
@@ -231,9 +232,15 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
             f"total_calcule FROM factures {where} "
             f"ORDER BY {col} {sens.upper()}, id DESC LIMIT ? OFFSET ?",
             params + [TAILLE_PAGE, (page - 1) * TAILLE_PAGE]).fetchall()
+        # Factures dont des lignes ont un montant mais pas de PA net (récupérable).
+        n_recup = c.execute(
+            "SELECT COUNT(DISTINCT l.facture_id) n FROM lignes_facture l "
+            "JOIN factures f ON f.id = l.facture_id WHERE l.prix_net IS NULL "
+            "AND l.montant_ht IS NOT NULL AND l.qte > 0 AND f.statut IN ('ingeree','en_revue')"
+        ).fetchone()["n"]
         return TEMPLATES.TemplateResponse(request, "factures.html", {
             "rows": rows, "q": q, "page": page, "pages": pages, "total": total,
-            "taille": TAILLE_PAGE, "tri": tri, "sens": sens})
+            "taille": TAILLE_PAGE, "tri": tri, "sens": sens, "n_recup": n_recup})
 
     @app.get("/facture-labo/{fid}", response_class=HTMLResponse)
     def facture_labo(request: Request, fid: int):
@@ -294,6 +301,43 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
                   "motif='intégré au référentiel après vérification manuelle' WHERE id=?", (fid,))
         c.commit()
         return RedirectResponse(f"/facture-labo/{fid}?ok=1", status_code=303)
+
+    @app.post("/factures/recuperer-net")
+    def recuperer_net():
+        """Récupère le PA net manquant (net = brut×(1−remise), sinon montant÷qté) sur les
+        factures ingérées/en revue, puis verse les lignes complétées au référentiel."""
+        c = conn()
+        lignes = c.execute(
+            "SELECT l.id, l.facture_id, l.code, l.type_code, l.code_interne, l.designation, "
+            "l.qte, l.qte_gratuite, l.prix_brut, l.remise_pct, l.montant_ht, l.tva, "
+            "f.labo, f.date_facture FROM lignes_facture l JOIN factures f ON f.id = l.facture_id "
+            "WHERE l.prix_net IS NULL AND l.montant_ht IS NOT NULL AND l.qte > 0 "
+            "AND f.statut IN ('ingeree', 'en_revue')").fetchall()
+        par_facture = {}
+        for l in lignes:
+            if l["prix_brut"] and l["remise_pct"] is not None and l["remise_pct"] < 100:
+                net = round(l["prix_brut"] * (1 - l["remise_pct"] / 100), 4)
+            else:
+                net = round(l["montant_ht"] / l["qte"], 4)
+            if net <= 0:
+                continue
+            lf = LigneFacture(
+                code=l["code"], type_code=l["type_code"], code_interne=l["code_interne"],
+                designation=l["designation"] or "", qte=l["qte"],
+                qte_gratuite=l["qte_gratuite"] or 0, prix_brut=l["prix_brut"],
+                remise_pct=l["remise_pct"], prix_net=net, montant_ht=l["montant_ht"], tva=l["tva"])
+            q = selection.qualifier_ligne(lf)
+            c.execute("UPDATE lignes_facture SET prix_net=?, valide=?, motif_ligne=? WHERE id=?",
+                      (net, int(q.inclure), q.note, l["id"]))
+            if q.inclure:
+                rec = par_facture.setdefault(l["facture_id"], [l["date_facture"], l["labo"], []])
+                rec[2].append((q.code_ref, q.type_code, lf))
+        n_ref = 0
+        for fid, (date_f, labo, entrees) in par_facture.items():
+            enregistrer_referentiel(c, fid, date_f, labo, entrees)
+            n_ref += len(entrees)
+        c.commit()
+        return RedirectResponse(f"/factures?recup={n_ref}", status_code=303)
 
     @app.get("/export-base")
     def export_base():
@@ -542,18 +586,18 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
         return recalculer_prix_facture(conn(), retro_id)
 
     @app.get("/facture/{retro_id}/csv")
-    def facture_dl_csv(retro_id: int):
+    def facture_dl_csv(retro_id: int, forcer: bool = False):
         f = _facture_ou_404(retro_id)
-        if f.bloquee:
+        if f.bloquee and not forcer:
             raise HTTPException(status_code=409, detail="lignes à compléter")
         return Response(
             content=facture_csv(f), media_type="text/csv; charset=utf-8",
             headers={"Content-Disposition": f"attachment; filename=facture_{retro_id}.csv"})
 
     @app.get("/facture/{retro_id}/xlsx")
-    def facture_dl_xlsx(retro_id: int):
+    def facture_dl_xlsx(retro_id: int, forcer: bool = False):
         f = _facture_ou_404(retro_id)
-        if f.bloquee:
+        if f.bloquee and not forcer:
             raise HTTPException(status_code=409, detail="lignes à compléter")
         return Response(
             content=facture_xlsx(f),
@@ -561,9 +605,9 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
             headers={"Content-Disposition": f"attachment; filename=facture_{retro_id}.xlsx"})
 
     @app.get("/facture/{retro_id}/pdf")
-    def facture_dl_pdf(retro_id: int):
+    def facture_dl_pdf(retro_id: int, forcer: bool = False):
         f = _facture_ou_404(retro_id)
-        if f.bloquee:
+        if f.bloquee and not forcer:
             raise HTTPException(status_code=409, detail="lignes à compléter")
         return Response(
             content=facture_pdf(f), media_type="application/pdf",

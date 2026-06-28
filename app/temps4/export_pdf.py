@@ -17,6 +17,10 @@ def facture_pdf(facture):
     el.append(Paragraph(f"Émettrice : {facture.emettrice or ''}", styles["Normal"]))
     el.append(Paragraph(f"Destinataire : {facture.destinataire or ''}", styles["Normal"]))
     el.append(Paragraph(f"Date : {facture.date_vente or ''}", styles["Normal"]))
+    if getattr(facture, "n_rouge", 0):
+        el.append(Paragraph(
+            f"<b>FACTURE PARTIELLE</b> — {facture.n_rouge} ligne(s) non rapprochée(s) "
+            "exclue(s) du total.", styles["Normal"]))
     el.append(Spacer(1, 6 * mm))
 
     entete = ["Désignation", "Code", "Qté", "PA brut", "Rem.%", "PA net", "TVA", "Montant HT"]

@@ -9,6 +9,9 @@ def facture_csv(facture):
     w.writerow(["Émettrice", facture.emettrice or ""])
     w.writerow(["Destinataire", facture.destinataire or ""])
     w.writerow(["Date", facture.date_vente or ""])
+    if getattr(facture, "n_rouge", 0):
+        w.writerow(["FACTURE PARTIELLE",
+                    f"{facture.n_rouge} ligne(s) non rapprochée(s) exclue(s) du total"])
     w.writerow([])
     w.writerow(["BL", "Date BL", "Désignation", "Code", "Qté", "PA brut",
                 "Remise %", "PA net", "TVA", "Montant HT"])

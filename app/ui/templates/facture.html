@@ -24,6 +24,17 @@
     <button disabled>Générer PDF</button>
     <button disabled>Générer Excel</button>
     <button disabled>Générer CSV</button>
+    <div style="margin-top:.6rem; background:#FFFBEB; border:1px solid #FDE68A; border-radius:10px; padding:.6rem .9rem;">
+      <strong>Forcer le téléchargement</strong> —
+      {% if f.n_rouge %}{{ f.n_rouge }} ligne(s) non rapprochée(s) seront <strong>exclues</strong> du total{% else %}contrôle de complétude non validé{% endif %}
+      (le reste est facturé normalement) :
+      {% set msg = 'Télécharger une facture PARTIELLE ? ' ~ f.n_rouge ~ ' ligne(s) non rapprochée(s) seront exclues du total.' %}
+      <span style="display:inline-flex; gap:.4rem; margin-left:.3rem; flex-wrap:wrap;">
+        <a href="/facture/{{ f.retro_id }}/pdf?forcer=1" onclick="return confirm('{{ msg }}');"><button>Forcer PDF</button></a>
+        <a href="/facture/{{ f.retro_id }}/xlsx?forcer=1" onclick="return confirm('{{ msg }}');"><button>Forcer Excel</button></a>
+        <a href="/facture/{{ f.retro_id }}/csv?forcer=1" onclick="return confirm('{{ msg }}');"><button>Forcer CSV</button></a>
+      </span>
+    </div>
   {% else %}
     <a href="/facture/{{ f.retro_id }}/pdf"><button>Générer PDF</button></a>
     <a href="/facture/{{ f.retro_id }}/xlsx"><button>Générer Excel</button></a>

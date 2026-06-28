@@ -89,6 +89,39 @@ def test_facture_ingere_sans_prix_net_signale(tmp_path):
     assert "30.00" in d                                 # remise affichée
 
 
+def test_recuperer_net_verse_au_referentiel(tmp_path):
+    # Cas PiLeJe : montant + brut + remise mais pas de net -> dériver net via la remise.
+    client = _client(tmp_path)
+    c = get_connection(client.app.state.db_path)
+    c.execute("INSERT INTO factures (id, fichier, labo, date_facture, statut, total_affiche) "
+              "VALUES (1, 'pileje.pdf', 'PiLeJe', '11/09/2025', 'ingeree', 140.53)")
+    c.execute("INSERT INTO lignes_facture (facture_id, code_interne, designation, qte, "
+              "prix_brut, remise_pct, montant_ht, valide, motif_ligne) "
+              "VALUES (1, '6316863', 'CHRONOBIANE', 12, 16.73, 30.0, 140.53, 0, 'ligne non-prix')")
+    c.commit()
+    client.post("/factures/recuperer-net")
+    r = c.execute("SELECT code, prix_net, remise_pct FROM referentiel_prix").fetchone()
+    assert r is not None
+    assert r["code"] == "6316863"
+    assert abs(r["prix_net"] - 16.73 * 0.7) < 0.01     # net dérivé via la remise
+    assert r["remise_pct"] == 30.0                      # remise conservée
+    lf = c.execute("SELECT prix_net, valide FROM lignes_facture WHERE facture_id=1").fetchone()
+    assert lf["valide"] == 1
+
+
+def test_recuperer_net_ignore_lignes_ug(tmp_path):
+    # ligne UG (remise 100, montant 0) -> ne doit PAS être versée
+    client = _client(tmp_path)
+    c = get_connection(client.app.state.db_path)
+    c.execute("INSERT INTO factures (id, fichier, labo, date_facture, statut) "
+              "VALUES (1, 'x.pdf', 'L', '01/09/2025', 'ingeree')")
+    c.execute("INSERT INTO lignes_facture (facture_id, code_interne, designation, qte, "
+              "prix_brut, remise_pct, montant_ht, valide) VALUES (1, 'UG1', 'GRATUIT', 1, 15.0, 100.0, 0.0, 0)")
+    c.commit()
+    client.post("/factures/recuperer-net")
+    assert c.execute("SELECT COUNT(*) n FROM referentiel_prix").fetchone()["n"] == 0
+
+
 def test_detail_inexistant_redirige(tmp_path):
     client = _client(tmp_path)
     r = client.get("/facture-labo/999", follow_redirects=False)
