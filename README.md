@@ -21,7 +21,7 @@ l'IA qui lit les PDF).
 
 ---
 
-# 🚀 Installation (pour vos confrères) — pas besoin d'être informaticien
+# 🚀 Installation
 
 > Sous **Windows**. Comptez ~10 minutes la première fois.
 
