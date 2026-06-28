@@ -9,6 +9,8 @@
   <p class="erreur">Total HT affiché sur la facture : <strong>{{ f.total_ht_affiche }}</strong> €
      · recalculé depuis les lignes lues : <strong>{{ f.total_ht_calcule }}</strong> €.
      Des lignes sont peut-être manquantes — vérifiez le PDF avant toute génération.</p>
+  <p><button onclick="recontroler()">↻ Re-vérifier la complétude (seuil 1 €)</button>
+     <span style="color:var(--grey); font-size:.88rem;">— revalide si l'écart entre total affiché et recalculé est inférieur à 1 €</span></p>
 {% endif %}
 {% if f.n_rouge %}
   <p class="en_revue"><strong>{{ f.n_rouge }} ligne(s) à compléter avant de pouvoir générer la facture.</strong></p>
@@ -76,6 +78,11 @@
 <script>
 async function recalculer() {
   const r = await fetch("/facture/{{ f.retro_id }}/recalculer", { method: "POST" });
+  if (r.ok) location.reload();
+}
+
+async function recontroler() {
+  const r = await fetch("/facture/{{ f.retro_id }}/recontroler", { method: "POST" });
   if (r.ok) location.reload();
 }
 

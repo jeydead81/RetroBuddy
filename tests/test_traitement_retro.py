@@ -167,6 +167,24 @@ def test_n3_qte_incoherente_echoue(tmp_path):
     assert "qté" in res.motif_reconciliation
 
 
+def test_ecart_total_sous_1euro_non_significatif(tmp_path):
+    conn = _conn(tmp_path)
+    _ref(conn, "3400930000007", "01/08/2025", 4.5)
+    # total affiché 10.06 vs Σ montants 10.00 -> 6 centimes, non significatif (< 1 €)
+    retro = _retro([_ligne("3400930000007", "10/08/2025", montant_ht=10.0)], total=10.06)
+    res = traiter_retro(conn, _pdf(), MockExtractor(defaut=retro), CFG)
+    assert res.reconciliation_ok is True
+
+
+def test_ligne_sans_qte_ignoree_si_total_ok(tmp_path):
+    conn = _conn(tmp_path)
+    _ref(conn, "3400930000007", "01/08/2025", 4.5)
+    # qté manquante -> N3 non vérifiable pour cette ligne, mais le total réconcilie
+    retro = _retro([_ligne("3400930000007", "10/08/2025", montant_ht=10.0, qte=None)])
+    res = traiter_retro(conn, _pdf(), MockExtractor(defaut=retro), CFG)
+    assert res.reconciliation_ok is True
+
+
 def test_n2_tva_incoherente_echoue(tmp_path):
     conn = _conn(tmp_path)
     _ref(conn, "3400930000007", "01/08/2025", 4.5)

@@ -40,6 +40,29 @@ def test_export_force_partielle(tmp_path):
     assert "1 ligne(s) non rapprochée(s)" in csv.text    # n_rouge = 1
 
 
+def test_recontroler_revalide_sous_1euro(tmp_path):
+    client = _client(tmp_path)
+    c = get_connection(client.app.state.db_path)
+    c.execute("INSERT INTO retro_documents (id, fichier, total_ht_affiche, total_ht_calcule, "
+              "reconciliation_ok, motif_reconciliation) "
+              "VALUES (1, 'r.pdf', 1215.78, 1215.84, 0, 'qté ou prix net manquant')")
+    c.commit()
+    r = client.post("/facture/1/recontroler")                # écart 6 centimes
+    assert r.json()["ok"] is True
+    assert c.execute("SELECT reconciliation_ok FROM retro_documents WHERE id=1").fetchone()[0] == 1
+
+
+def test_recontroler_garde_ecart_significatif(tmp_path):
+    client = _client(tmp_path)
+    c = get_connection(client.app.state.db_path)
+    c.execute("INSERT INTO retro_documents (id, fichier, total_ht_affiche, total_ht_calcule, "
+              "reconciliation_ok) VALUES (1, 'r.pdf', 1000.0, 1005.0, 0)")   # écart 5 € > 1 €
+    c.commit()
+    r = client.post("/facture/1/recontroler")
+    assert r.json()["ok"] is False
+    assert c.execute("SELECT reconciliation_ok FROM retro_documents WHERE id=1").fetchone()[0] == 0
+
+
 def test_facture_lignes_editables(tmp_path):
     client = _client(tmp_path)
     c = get_connection(client.app.state.db_path)

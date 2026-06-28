@@ -16,14 +16,21 @@ class ResultatRetro:
     motif_reconciliation: str | None = None
 
 
-def _reconcilier(retro):
+# En-dessous de ce seuil (€), un écart est du bruit d'arrondi, non significatif.
+TOLERANCE_MIN_EUR = 1.0
+
+
+def _reconcilier(retro, tol_min=TOLERANCE_MIN_EUR):
     """Contrôles de cohérence de l'extraction. Au premier échec -> motif explicite.
 
     N1 — complétude : Σ(montant HT lignes) == Total HT affiché (aucune ligne oubliée).
-    N3 — ligne : qté × prix net == montant (attrape une qté mal lue).
+    N3 — ligne : qté × prix net == montant (attrape une qté mal lue) ; une ligne dont
+                 la qté ou le net manque n'est pas vérifiable, mais son montant est déjà
+                 couvert par N1 -> on l'ignore (pas d'échec).
     N2 — TVA : Σ(montant HT par taux) == Montant HT du taux dans la ventilation LGO
               (attrape une TVA mal affectée).
-    Tolérance = arrondi cumulé (~0,005 €/ligne), très en-dessous d'une ligne réelle.
+    Tolérance = max(`tol_min`, arrondi cumulé ~0,005 €/ligne) : un écart < `tol_min`
+    (1 € par défaut) n'est pas considéré comme significatif.
     Retourne (ok: bool, total_calcule: float|None, motif: str|None).
     """
     lignes = retro.lignes
@@ -35,14 +42,14 @@ def _reconcilier(retro):
     somme = round(sum(l.montant_ht for l in lignes), 2)
 
     # N1 — complétude
-    if abs(somme - total) > round(0.02 + 0.005 * len(lignes), 2):
+    if abs(somme - total) > max(tol_min, round(0.02 + 0.005 * len(lignes), 2)):
         return False, somme, f"écart de total : {somme} calculé vs {total} affiché"
 
-    # N3 — cohérence ligne (qté × prix net == montant)
+    # N3 — cohérence ligne (qté × prix net == montant) ; ligne incomplète -> ignorée
     for l in lignes:
         if l.qte is None or l.prix_net_lgo is None:
-            return False, somme, "qté ou prix net manquant pour le contrôle ligne"
-        if abs(round(l.qte * l.prix_net_lgo, 2) - l.montant_ht) > 0.02:
+            continue
+        if abs(round(l.qte * l.prix_net_lgo, 2) - l.montant_ht) > tol_min:
             return False, somme, f"ligne incohérente (qté×prix ≠ montant) : {l.designation}"
 
     # N2 — cohérence TVA (Σ par taux == ventilation)
@@ -61,7 +68,7 @@ def _reconcilier(retro):
     for v in retro.entete.ventilation:
         k = round(v.taux, 2)
         n_k = sum(1 for l in lignes if round(l.tva, 2) == k)
-        if abs(par_taux.get(k, 0.0) - v.montant_ht) > round(0.02 + 0.005 * n_k, 2):
+        if abs(par_taux.get(k, 0.0) - v.montant_ht) > max(tol_min, round(0.02 + 0.005 * n_k, 2)):
             return False, somme, f"écart TVA {v.taux}% : {par_taux.get(k, 0.0)} vs {v.montant_ht} affiché"
 
     return True, somme, None
@@ -73,11 +80,12 @@ def traiter_retro(conn, pdf, extractor, config) -> ResultatRetro:
 
     # Garde-fou : la somme des lignes doit réconcilier le Total HT affiché. Sinon,
     # un montant est en jeu -> une seule re-extraction en Opus (2e avis).
-    ok, total_calc, motif = _reconcilier(retro)
+    tol = config.get("tolerance_reconciliation_eur", TOLERANCE_MIN_EUR)
+    ok, total_calc, motif = _reconcilier(retro, tol)
     if not ok:
         retro = extractor.extraire(pdf, config["model_escalade"])
         cout += getattr(extractor, "dernier_cout", 0.0)
-        ok, total_calc, motif = _reconcilier(retro)
+        ok, total_calc, motif = _reconcilier(retro, tol)
 
     seuil_bas = config.get("seuil_match_bas", 0.80)
     seuil_auto = config.get("seuil_match_auto", 0.95)

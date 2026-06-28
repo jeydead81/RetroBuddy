@@ -14,7 +14,7 @@ from app.temps1.pipeline import traiter_facture
 from app.temps1.referentiel import enregistrer_referentiel
 from app.temps1.schemas import LigneFacture
 from app.temps2.schemas import RetroExtrait
-from app.temps2.traitement_retro import traiter_retro
+from app.temps2.traitement_retro import TOLERANCE_MIN_EUR, traiter_retro
 from app.temps3 import resolution as resolution_logique
 from app.temps3.rematch import rematcher
 from app.temps4.export_csv import facture_csv
@@ -629,6 +629,24 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
     def facture_recalculer(retro_id: int):
         """Propage le référentiel à cette facture (lignes auto-rapprochées uniquement)."""
         return recalculer_prix_facture(conn(), retro_id)
+
+    @app.post("/facture/{retro_id}/recontroler")
+    def facture_recontroler(retro_id: int):
+        """Re-vérifie la complétude au seuil 1 € depuis les totaux stockés (sans
+        ré-extraction) : revalide si l'écart Total affiché / calculé est < tolérance."""
+        c = conn()
+        d = c.execute("SELECT total_ht_affiche, total_ht_calcule FROM retro_documents "
+                      "WHERE id=?", (retro_id,)).fetchone()
+        if d is None:
+            raise HTTPException(status_code=404, detail="facture introuvable")
+        ta, tc = d["total_ht_affiche"], d["total_ht_calcule"]
+        tol = app.state.config.get("tolerance_reconciliation_eur", TOLERANCE_MIN_EUR)
+        ok = ta is not None and tc is not None and abs(ta - tc) <= tol
+        motif = None if ok else f"écart de total : {tc} calculé vs {ta} affiché (> {tol} €)"
+        c.execute("UPDATE retro_documents SET reconciliation_ok=?, motif_reconciliation=? "
+                  "WHERE id=?", (int(ok), motif, retro_id))
+        c.commit()
+        return {"ok": ok}
 
     @app.get("/facture/{retro_id}/csv")
     def facture_dl_csv(retro_id: int, forcer: bool = False):
