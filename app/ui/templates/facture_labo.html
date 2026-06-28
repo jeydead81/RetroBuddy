@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% block contenu %}
+<style>
+  .carte{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+    padding:1.1rem 1.3rem; margin:1rem 0; box-shadow:var(--shadow); }
+  .meta{ display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:.5rem .9rem; }
+  .meta .k{ color:var(--grey); font-size:.82rem; }
+  .ecart-ok{ color:#166534; font-weight:700; } .ecart-ko{ color:#991B1B; font-weight:700; }
+  tr.incoherent td{ background:#FEF2F2; }
+  .pastille{ font-size:.78rem; color:#991B1B; font-weight:600; white-space:nowrap; }
+</style>
+
+<p><a href="/factures">← Factures laboratoires</a></p>
+<h1>Facture {{ f["numero_facture"] or f["fichier"] }}</h1>
+
+{% if request.query_params.get('ok') %}
+  <p style="color:#166534; font-weight:600;">✓ Prix intégrés au référentiel. Statut passé à « Ingérée ».</p>
+{% endif %}
+
+<div class="carte">
+  <div class="meta">
+    <div><div class="k">Fichier</div>{{ f["fichier"] }}</div>
+    <div><div class="k">Labo</div>{{ f["labo"] or "—" }}</div>
+    <div><div class="k">Date</div>{{ f["date_facture"] or "—" }}</div>
+    <div><div class="k">Type</div>{{ f["type_document"] or "—" }}</div>
+    <div><div class="k">Statut</div>{{ ui.badge(f["statut"]) }}</div>
+    <div><div class="k">Modèle</div>{{ f["modele_extraction"] or "—" }}</div>
+  </div>
+  {% if f["motif"] %}<p style="color:#B45309; margin:.6rem 0 0;">⚠ {{ f["motif"] }}</p>{% endif %}
+  <p style="margin:.6rem 0 0;">
+    Total affiché : <strong>{{ "%.2f"|format(f["total_affiche"]) if f["total_affiche"] is not none else "—" }} €</strong>
+    · Somme des lignes : <strong>{{ "%.2f"|format(somme) }} €</strong>
+    · Écart :
+    {% if ecart is none %}<span class="ecart-ko">total affiché illisible</span>
+    {% elif ecart <= 0.02 and ecart >= -0.02 %}<span class="ecart-ok">{{ "%.2f"|format(ecart) }} € ✓</span>
+    {% else %}<span class="ecart-ko">{{ "%.2f"|format(ecart) }} € — à vérifier</span>{% endif %}
+  </p>
+</div>
+
+<table>
+  <tr><th>Code</th><th>Type</th><th>Désignation</th><th>Qté</th><th>PA net</th>
+      <th>Montant HT</th><th>Qté×net attendu</th><th>Au réf. ?</th></tr>
+  {% for d in details %}
+  {% set l = d.l %}
+  <tr class="{{ 'incoherent' if d.incoherent else '' }}">
+    <td>{{ l["code"] or l["code_interne"] or "—" }}{% if l["checksum_ok"] == 0 and l["code"] %} <span class="pastille">code ?</span>{% endif %}</td>
+    <td>{{ l["type_code"] or "" }}</td>
+    <td>{{ l["designation"] }}</td>
+    <td>{{ l["qte"] if l["qte"] is not none else "" }}</td>
+    <td>{{ "%.4f"|format(l["prix_net"]) if l["prix_net"] is not none else "" }}</td>
+    <td>{{ "%.2f"|format(l["montant_ht"]) if l["montant_ht"] is not none else "" }}</td>
+    <td>{{ "%.2f"|format(d.attendu) }}{% if d.incoherent %} <span class="pastille">≠ montant</span>{% endif %}</td>
+    <td>{% if l["valide"] %}✓{% else %}<span style="color:var(--grey);">non</span>{% endif %}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="8" style="color:var(--grey); padding:1rem;">Aucune ligne extraite.</td></tr>
+  {% endfor %}
+</table>
+
+{% if f["statut"] == "en_revue" %}
+<div class="carte" style="border-color:#FDE68A; background:#FFFBEB;">
+  <p style="margin:0 0 .6rem;"><strong>Vérification manuelle.</strong>
+     Repérez la ligne en rouge (qté×net ≠ montant) ou un total affiché incluant autre chose
+     (port, éco-participation). Si après contrôle les prix ci-dessus sont corrects, intégrez-les :
+     seules les lignes marquées <strong>✓</strong> entreront au référentiel.</p>
+  <form action="/facture-labo/{{ f['id'] }}/integrer" method="post"
+        onsubmit="return confirm('Intégrer les prix valides de cette facture au référentiel ?');">
+    <button type="submit">✓ J'ai vérifié → intégrer au référentiel</button>
+  </form>
+</div>
+{% endif %}
+{% endblock %}

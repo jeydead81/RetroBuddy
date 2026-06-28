@@ -10,6 +10,8 @@ from app.db import get_connection, init_db
 from app.temps1.extraction_ia import ClaudeExtractor
 from app.temps1.pdf_reader import lire_pdf
 from app.temps1.pipeline import traiter_facture
+from app.temps1.referentiel import enregistrer_referentiel
+from app.temps1.schemas import LigneFacture
 from app.temps2.schemas import RetroExtrait
 from app.temps2.traitement_retro import traiter_retro
 from app.temps3 import resolution as resolution_logique
@@ -232,6 +234,58 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
         return TEMPLATES.TemplateResponse(request, "factures.html", {
             "rows": rows, "q": q, "page": page, "pages": pages, "total": total,
             "taille": TAILLE_PAGE, "tri": tri, "sens": sens})
+
+    @app.get("/facture-labo/{fid}", response_class=HTMLResponse)
+    def facture_labo(request: Request, fid: int):
+        c = conn()
+        f = c.execute(
+            "SELECT id, fichier, labo, numero_facture, date_facture, type_document, "
+            "statut, motif, total_affiche, total_calcule, modele_extraction "
+            "FROM factures WHERE id=?", (fid,)).fetchone()
+        if f is None:
+            return RedirectResponse("/factures", status_code=303)
+        lignes = c.execute(
+            "SELECT code, type_code, code_interne, designation, qte, prix_net, "
+            "montant_ht, checksum_ok, valide FROM lignes_facture "
+            "WHERE facture_id=? ORDER BY id", (fid,)).fetchall()
+        # Cohérence par ligne : qté×PA net ≈ montant HT -> repère la ligne fautive.
+        details, somme = [], 0.0
+        for l in lignes:
+            mt = l["montant_ht"]
+            attendu = (l["qte"] or 0) * (l["prix_net"] or 0)
+            incoherent = mt is not None and abs(attendu - mt) > max(0.02, abs(mt) * 0.01)
+            if mt is not None:
+                somme += mt
+            details.append({"l": l, "attendu": round(attendu, 2), "incoherent": incoherent})
+        ta = f["total_affiche"]
+        ecart = round(somme - ta, 2) if ta is not None else None
+        return TEMPLATES.TemplateResponse(request, "facture_labo.html", {
+            "f": f, "details": details, "somme": round(somme, 2), "ecart": ecart})
+
+    @app.post("/facture-labo/{fid}/integrer")
+    def integrer_facture_labo(fid: int):
+        """Après vérification manuelle : pousse les lignes valides au référentiel."""
+        c = conn()
+        f = c.execute("SELECT id, labo, date_facture FROM factures WHERE id=?",
+                      (fid,)).fetchone()
+        if f is None:
+            return RedirectResponse("/factures", status_code=303)
+        lignes = c.execute(
+            "SELECT code, code_interne, type_code, designation, prix_brut, remise_pct, "
+            "prix_net, valide FROM lignes_facture WHERE facture_id=?", (fid,)).fetchall()
+        entrees = []
+        for row in lignes:
+            code_ref = row["code"] or row["code_interne"]
+            if not row["valide"] or not code_ref:
+                continue
+            lf = LigneFacture(designation=row["designation"] or "", prix_brut=row["prix_brut"],
+                              remise_pct=row["remise_pct"], prix_net=row["prix_net"])
+            entrees.append((code_ref, row["type_code"], lf))
+        enregistrer_referentiel(c, fid, f["date_facture"], f["labo"], entrees)
+        c.execute("UPDATE factures SET statut='ingeree', "
+                  "motif='intégré au référentiel après vérification manuelle' WHERE id=?", (fid,))
+        c.commit()
+        return RedirectResponse(f"/facture-labo/{fid}?ok=1", status_code=303)
 
     @app.get("/export-base")
     def export_base():
