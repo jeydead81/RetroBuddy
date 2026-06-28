@@ -8,8 +8,7 @@
 
 ---
 
-RetroBuddy transforme un travail manuel d'environ 6 semaines/an en quelques heures de
-validation. À partir des **factures laboratoires** (le coût réel des produits) et des
+À partir des **factures laboratoires** (le coût réel des produits) et des
 **factures de vente rétrocession du LGO (LGPI)**, l'outil construit un référentiel de prix,
 rapproche chaque ligne et calcule le prix de rétrocession au **dernier prix net connu à la
 date du bon de livraison**.
