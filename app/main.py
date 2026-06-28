@@ -202,8 +202,15 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
         return {"prix_brut": brut, "remise_pct": remise, "prix_net": net,
                 "modifie_manuellement": True}
 
+    # Colonnes triables (clé d'URL -> colonne SQL). Liste blanche = pas d'injection.
+    COLS_TRI_FACTURES = {
+        "id": "id", "fichier": "fichier", "labo": "labo", "type": "type_document",
+        "statut": "statut", "motif": "motif", "affiche": "total_affiche",
+        "calcule": "total_calcule", "modele": "modele_extraction"}
+
     @app.get("/factures", response_class=HTMLResponse)
-    def factures(request: Request, q: str = "", page: int = 1):
+    def factures(request: Request, q: str = "", page: int = 1,
+                 tri: str = "id", sens: str = "desc"):
         q = q.strip()
         where, params = "", []
         if q:
@@ -211,6 +218,8 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
             where = ("WHERE fichier LIKE ? OR labo LIKE ? OR statut LIKE ? "
                      "OR motif LIKE ? OR date_facture LIKE ?")
             params = [like] * 5
+        col = COLS_TRI_FACTURES.get(tri, "id")
+        sens = "asc" if sens == "asc" else "desc"
         c = conn()
         total = c.execute(f"SELECT COUNT(*) n FROM factures {where}", params).fetchone()["n"]
         pages = max(1, (total + TAILLE_PAGE - 1) // TAILLE_PAGE)
@@ -218,11 +227,11 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
         rows = c.execute(
             "SELECT id, fichier, labo, type_document, statut, motif, total_affiche, "
             f"total_calcule, modele_extraction FROM factures {where} "
-            "ORDER BY id DESC LIMIT ? OFFSET ?",
+            f"ORDER BY {col} {sens.upper()}, id DESC LIMIT ? OFFSET ?",
             params + [TAILLE_PAGE, (page - 1) * TAILLE_PAGE]).fetchall()
         return TEMPLATES.TemplateResponse(request, "factures.html", {
-            "rows": rows, "q": q, "page": page, "pages": pages,
-            "total": total, "taille": TAILLE_PAGE})
+            "rows": rows, "q": q, "page": page, "pages": pages, "total": total,
+            "taille": TAILLE_PAGE, "tri": tri, "sens": sens})
 
     @app.get("/export-base")
     def export_base():

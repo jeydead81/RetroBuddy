@@ -11,14 +11,21 @@
   {% if q %}<a href="/factures"><button type="button">Effacer</button></a>{% endif %}
 </form>
 
+{% macro th(label, key) %}
+  {%- set nsens = 'desc' if (tri == key and sens == 'asc') else 'asc' -%}
+  <th style="white-space:nowrap;"><a href="?q={{ q|urlencode }}&tri={{ key }}&sens={{ nsens }}"
+       style="color:inherit; text-decoration:none;">{{ label }}{% if tri == key %} <span style="font-size:.8em;">{{ '▲' if sens == 'asc' else '▼' }}</span>{% endif %}</a></th>
+{% endmacro %}
+
 <table>
-  <tr><th>#</th><th>Fichier</th><th>Labo</th><th>Type</th><th>Statut</th><th>Motif</th>
-      <th>Total affiché</th><th>Total calculé</th><th>Modèle</th></tr>
+  <tr>{{ th('#','id') }}{{ th('Fichier','fichier') }}{{ th('Labo','labo') }}{{ th('Type','type') }}{{ th('Statut','statut') }}{{ th('Motif','motif') }}{{ th('Total affiché','affiche') }}{{ th('Total calculé','calcule') }}{{ th('Modèle','modele') }}</tr>
   {% for r in rows %}
     <tr><td>{{ r["id"] }}</td><td>{{ r["fichier"] }}</td><td>{{ r["labo"] }}</td>
         <td>{{ r["type_document"] }}</td><td>{{ ui.badge(r["statut"]) }}</td>
-        <td>{{ r["motif"] or "" }}</td><td>{{ r["total_affiche"] }}</td>
-        <td>{{ r["total_calcule"] }}</td><td>{{ r["modele_extraction"] }}</td></tr>
+        <td>{{ r["motif"] or "" }}</td>
+        <td>{{ "%.2f"|format(r["total_affiche"]) if r["total_affiche"] is not none else "" }}</td>
+        <td>{{ "%.2f"|format(r["total_calcule"]) if r["total_calcule"] is not none else "" }}</td>
+        <td>{{ r["modele_extraction"] }}</td></tr>
   {% else %}
     <tr><td colspan="9" style="color:var(--grey); padding:1rem;">{% if q %}Aucun résultat pour « {{ q }} ».{% else %}Aucune facture laboratoire — importez-en à l'<a href="/import-labos">étape 1</a>.{% endif %}</td></tr>
   {% endfor %}
@@ -27,9 +34,9 @@
 {% if total > taille %}
 <p style="display:flex; gap:.9rem; align-items:center; flex-wrap:wrap; color:var(--grey);">
   <span>{{ (page-1)*taille + 1 }}–{{ [page*taille, total]|min }} sur {{ total }}</span>
-  {% if page > 1 %}<a href="?q={{ q|urlencode }}&page={{ page-1 }}">‹ Précédent</a>{% endif %}
+  {% if page > 1 %}<a href="?q={{ q|urlencode }}&tri={{ tri }}&sens={{ sens }}&page={{ page-1 }}">‹ Précédent</a>{% endif %}
   <span>page {{ page }} / {{ pages }}</span>
-  {% if page < pages %}<a href="?q={{ q|urlencode }}&page={{ page+1 }}">Suivant ›</a>{% endif %}
+  {% if page < pages %}<a href="?q={{ q|urlencode }}&tri={{ tri }}&sens={{ sens }}&page={{ page+1 }}">Suivant ›</a>{% endif %}
 </p>
 {% endif %}
 {% endblock %}
