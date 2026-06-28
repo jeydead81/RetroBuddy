@@ -65,3 +65,28 @@ def test_factures_lgpi_pagination_group_by(tmp_path):
     assert "sur 60" in h
     assert "page 1 / 2" in h
     assert "R059" in h and "R009" not in h        # tri d.id DESC -> derniers d'abord
+
+
+def test_factures_lgpi_filtre_mois(tmp_path):
+    client = _client(tmp_path)
+    c = get_connection(client.app.state.db_path)
+    c.execute("INSERT INTO retro_documents (numero, date_vente) VALUES ('SEP1','15/09/2025')")
+    c.execute("INSERT INTO retro_documents (numero, date_vente) VALUES ('AOU1','10/08/2025')")
+    c.execute("INSERT INTO retro_documents (numero, date_vente) VALUES ('SEP2','01/09/2025')")
+    c.commit()
+    page = client.get("/factures-retro").text
+    assert "Septembre 2025" in page and "Août 2025" in page    # menu rempli des mois présents
+    h = client.get("/factures-retro?periode=2025-09").text
+    assert "SEP1" in h and "SEP2" in h and "AOU1" not in h     # seul septembre
+
+
+def test_retro_lignes_filtre_mois(tmp_path):
+    client = _client(tmp_path)
+    c = get_connection(client.app.state.db_path)
+    c.execute("INSERT INTO retro_documents (id, numero) VALUES (1, 'N1')")
+    c.execute("INSERT INTO retro_lignes (retro_id, designation, bl_date) VALUES (1,'AAA','15/09/2025')")
+    c.execute("INSERT INTO retro_lignes (retro_id, designation, bl_date) VALUES (1,'BBB','10/08/2025')")
+    c.commit()
+    h = client.get("/retro-lignes?periode=2025-09").text
+    assert "AAA" in h and "BBB" not in h
+    assert "Septembre 2025" in h

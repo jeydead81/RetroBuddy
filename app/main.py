@@ -46,6 +46,23 @@ def _motif_erreur(e):
     return f"extraction impossible : {e}"
 
 
+MOIS_FR = ["", "janvier", "février", "mars", "avril", "mai", "juin", "juillet",
+           "août", "septembre", "octobre", "novembre", "décembre"]
+
+
+def _mois_disponibles(c, table, col):
+    """Mois présents dans une colonne date JJ/MM/AAAA (value 'AAAA-MM',
+    label 'Septembre 2025'), les plus récents d'abord — pour le menu de filtre."""
+    vus = {}
+    for r in c.execute(f"SELECT DISTINCT {col} d FROM {table} WHERE {col} IS NOT NULL"):
+        parts = str(r["d"]).split("/")
+        if len(parts) == 3 and parts[1].isdigit() and parts[2].isdigit() and len(parts[2]) == 4:
+            m = int(parts[1])
+            if 1 <= m <= 12:
+                vus[f"{parts[2]}-{parts[1].zfill(2)}"] = f"{MOIS_FR[m].capitalize()} {parts[2]}"
+    return sorted(vus.items(), reverse=True)
+
+
 def creer_app(db_path="data/retrocession.db") -> FastAPI:
     app = FastAPI(title="RetroBuddy")
     app.state.db_path = db_path
@@ -258,14 +275,18 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
         return _ingerer_retro_un(fichier, extractor)
 
     @app.get("/retro-lignes", response_class=HTMLResponse)
-    def retro_lignes(request: Request, q: str = "", page: int = 1):
+    def retro_lignes(request: Request, q: str = "", periode: str = "", page: int = 1):
         q = q.strip()
-        where, params = "", []
+        conds, params = [], []
         if q:
             like = f"%{q}%"
-            where = ("WHERE d.numero LIKE ? OR l.designation LIKE ? OR l.code LIKE ? "
-                     "OR l.bl_numero LIKE ? OR l.bl_date LIKE ? OR l.statut_ecart LIKE ?")
-            params = [like] * 6
+            conds.append("(d.numero LIKE ? OR l.designation LIKE ? OR l.code LIKE ? "
+                         "OR l.bl_numero LIKE ? OR l.bl_date LIKE ? OR l.statut_ecart LIKE ?)")
+            params += [like] * 6
+        if len(periode) == 7:
+            conds.append("l.bl_date LIKE ?")
+            params.append(f"%/{periode[5:7]}/{periode[:4]}")
+        where = ("WHERE " + " AND ".join(conds)) if conds else ""
         c = conn()
         total = c.execute(
             "SELECT COUNT(*) n FROM retro_lignes l "
@@ -279,8 +300,9 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
             "ORDER BY l.id LIMIT ? OFFSET ?",
             params + [TAILLE_PAGE, (page - 1) * TAILLE_PAGE]).fetchall()
         return TEMPLATES.TemplateResponse(request, "retro_lignes.html", {
-            "rows": rows, "q": q, "page": page, "pages": pages,
-            "total": total, "taille": TAILLE_PAGE})
+            "rows": rows, "q": q, "periode": periode,
+            "mois": _mois_disponibles(c, "retro_lignes", "bl_date"),
+            "page": page, "pages": pages, "total": total, "taille": TAILLE_PAGE})
 
     @app.get("/resolution", response_class=HTMLResponse)
     def resolution(request: Request):
@@ -394,14 +416,18 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
         return f
 
     @app.get("/factures-retro", response_class=HTMLResponse)
-    def factures_retro(request: Request, q: str = "", page: int = 1):
+    def factures_retro(request: Request, q: str = "", periode: str = "", page: int = 1):
         q = q.strip()
-        where, params = "", []
+        conds, params = [], []
         if q:
             like = f"%{q}%"
-            where = ("WHERE d.numero LIKE ? OR d.pharmacie_emettrice LIKE ? "
-                     "OR d.pharmacie_destinataire LIKE ? OR d.date_vente LIKE ?")
-            params = [like] * 4
+            conds.append("(d.numero LIKE ? OR d.pharmacie_emettrice LIKE ? "
+                         "OR d.pharmacie_destinataire LIKE ? OR d.date_vente LIKE ?)")
+            params += [like] * 4
+        if len(periode) == 7:                     # 'AAAA-MM' -> dates JJ/MM/AAAA
+            conds.append("d.date_vente LIKE ?")
+            params.append(f"%/{periode[5:7]}/{periode[:4]}")
+        where = ("WHERE " + " AND ".join(conds)) if conds else ""
         c = conn()
         total = c.execute(
             f"SELECT COUNT(*) n FROM retro_documents d {where}", params).fetchone()["n"]
@@ -417,8 +443,9 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
             "GROUP BY d.id ORDER BY d.id DESC LIMIT ? OFFSET ?",
             params + [TAILLE_PAGE, (page - 1) * TAILLE_PAGE]).fetchall()
         return TEMPLATES.TemplateResponse(request, "factures_retro.html", {
-            "rows": rows, "q": q, "page": page, "pages": pages,
-            "total": total, "taille": TAILLE_PAGE})
+            "rows": rows, "q": q, "periode": periode,
+            "mois": _mois_disponibles(c, "retro_documents", "date_vente"),
+            "page": page, "pages": pages, "total": total, "taille": TAILLE_PAGE})
 
     @app.get("/facture/{retro_id}", response_class=HTMLResponse)
     def facture(request: Request, retro_id: int):
