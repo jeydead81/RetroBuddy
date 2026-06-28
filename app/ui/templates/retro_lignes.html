@@ -2,6 +2,14 @@
 {% import "_macros.html" as ui %}
 {% block contenu %}
 <h1>Lignes de rétrocession</h1>
+
+<form method="get" style="display:flex; gap:.5rem; margin:.4rem 0 1rem; flex-wrap:wrap;">
+  <input type="search" name="q" value="{{ q }}"
+         placeholder="Rechercher : désignation, code, n° facture, BL, date…" style="flex:1; min-width:260px;">
+  <button type="submit">Rechercher</button>
+  {% if q %}<a href="/retro-lignes"><button type="button">Effacer</button></a>{% endif %}
+</form>
+
 <table>
   <tr><th>Facture</th><th>BL</th><th>Date BL</th><th>Désignation</th><th>Code</th>
       <th>Qté</th><th>TVA</th><th>PA net</th><th>Statut</th></tr>
@@ -11,7 +19,16 @@
         <td>{{ r["tva"] }}</td><td>{{ r["prix_net"] }}</td>
         <td>{{ ui.badge(r["statut_ecart"]) }}</td></tr>
   {% else %}
-    <tr><td colspan="9" style="color:var(--grey); padding:1rem;">Aucune ligne — importez une facture LGO à l'<a href="/retro">étape 2</a>.</td></tr>
+    <tr><td colspan="9" style="color:var(--grey); padding:1rem;">{% if q %}Aucun résultat pour « {{ q }} ».{% else %}Aucune ligne — importez une facture LGO à l'<a href="/retro">étape 2</a>.{% endif %}</td></tr>
   {% endfor %}
 </table>
+
+{% if total > taille %}
+<p style="display:flex; gap:.9rem; align-items:center; flex-wrap:wrap; color:var(--grey);">
+  <span>{{ (page-1)*taille + 1 }}–{{ [page*taille, total]|min }} sur {{ total }}</span>
+  {% if page > 1 %}<a href="?q={{ q|urlencode }}&page={{ page-1 }}">‹ Précédent</a>{% endif %}
+  <span>page {{ page }} / {{ pages }}</span>
+  {% if page < pages %}<a href="?q={{ q|urlencode }}&page={{ page+1 }}">Suivant ›</a>{% endif %}
+</p>
+{% endif %}
 {% endblock %}

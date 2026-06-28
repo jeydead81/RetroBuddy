@@ -1,6 +1,14 @@
 {% extends "base.html" %}
 {% block contenu %}
 <h1>Factures LGPI</h1>
+
+<form method="get" style="display:flex; gap:.5rem; margin:.4rem 0 1rem; flex-wrap:wrap;">
+  <input type="search" name="q" value="{{ q }}"
+         placeholder="Rechercher : n° facture, pharmacie, date…" style="flex:1; min-width:260px;">
+  <button type="submit">Rechercher</button>
+  {% if q %}<a href="/factures-retro"><button type="button">Effacer</button></a>{% endif %}
+</form>
+
 {% if rows %}
 <table>
   <tr><th>#</th><th>Numéro</th><th>Émettrice</th><th>Destinataire</th><th>Lignes</th>
@@ -19,6 +27,15 @@
 </table>
 <p style="color:var(--grey); font-size:.88rem;">⚠ <strong>Doublon</strong> = ce numéro de facture a été importé plusieurs fois. Risque de double facturation : supprimez l'import en trop (⚙ Réglages) avant de générer.</p>
 {% else %}
-<p style="color:var(--grey); padding:1rem 0;">Aucune facture LGPI pour l'instant — importez une facture LGO à l'<a href="/retro">étape 2</a>.</p>
+<p style="color:var(--grey); padding:1rem 0;">{% if q %}Aucun résultat pour « {{ q }} ».{% else %}Aucune facture LGPI pour l'instant — importez une facture LGO à l'<a href="/retro">étape 2</a>.{% endif %}</p>
+{% endif %}
+
+{% if total > taille %}
+<p style="display:flex; gap:.9rem; align-items:center; flex-wrap:wrap; color:var(--grey);">
+  <span>{{ (page-1)*taille + 1 }}–{{ [page*taille, total]|min }} sur {{ total }}</span>
+  {% if page > 1 %}<a href="?q={{ q|urlencode }}&page={{ page-1 }}">‹ Précédent</a>{% endif %}
+  <span>page {{ page }} / {{ pages }}</span>
+  {% if page < pages %}<a href="?q={{ q|urlencode }}&page={{ page+1 }}">Suivant ›</a>{% endif %}
+</p>
 {% endif %}
 {% endblock %}

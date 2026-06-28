@@ -135,13 +135,30 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
             {"recap": recap, "details": details, "cout_lot": round(cout_lot, 4),
              "n_total": _nombre_factures(), "cout_total": _cout_total()})
 
+    TAILLE_PAGE = 50
+
     @app.get("/referentiel", response_class=HTMLResponse)
-    def referentiel(request: Request):
-        rows = conn().execute(
-            "SELECT code, type_code, labo, date_facture, designation, "
-            "prix_brut, remise_pct, prix_net, modifie_manuellement "
-            "FROM referentiel_prix ORDER BY code, date_facture").fetchall()
-        return TEMPLATES.TemplateResponse(request, "referentiel.html", {"rows": rows})
+    def referentiel(request: Request, q: str = "", page: int = 1):
+        q = q.strip()
+        where, params = "", []
+        if q:
+            like = f"%{q}%"
+            where = ("WHERE code LIKE ? OR designation LIKE ? OR labo LIKE ? "
+                     "OR date_facture LIKE ?")
+            params = [like, like, like, like]
+        c = conn()
+        total = c.execute(
+            f"SELECT COUNT(*) n FROM referentiel_prix {where}", params).fetchone()["n"]
+        pages = max(1, (total + TAILLE_PAGE - 1) // TAILLE_PAGE)
+        page = max(1, min(page, pages))
+        rows = c.execute(
+            "SELECT code, type_code, labo, date_facture, designation, prix_brut, "
+            "remise_pct, prix_net, modifie_manuellement "
+            f"FROM referentiel_prix {where} ORDER BY code, date_facture LIMIT ? OFFSET ?",
+            params + [TAILLE_PAGE, (page - 1) * TAILLE_PAGE]).fetchall()
+        return TEMPLATES.TemplateResponse(request, "referentiel.html", {
+            "rows": rows, "q": q, "page": page, "pages": pages,
+            "total": total, "taille": TAILLE_PAGE})
 
     @app.post("/referentiel/maj")
     def referentiel_maj(payload: dict):
@@ -169,11 +186,26 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
                 "modifie_manuellement": True}
 
     @app.get("/factures", response_class=HTMLResponse)
-    def factures(request: Request):
-        rows = conn().execute(
+    def factures(request: Request, q: str = "", page: int = 1):
+        q = q.strip()
+        where, params = "", []
+        if q:
+            like = f"%{q}%"
+            where = ("WHERE fichier LIKE ? OR labo LIKE ? OR statut LIKE ? "
+                     "OR motif LIKE ? OR date_facture LIKE ?")
+            params = [like] * 5
+        c = conn()
+        total = c.execute(f"SELECT COUNT(*) n FROM factures {where}", params).fetchone()["n"]
+        pages = max(1, (total + TAILLE_PAGE - 1) // TAILLE_PAGE)
+        page = max(1, min(page, pages))
+        rows = c.execute(
             "SELECT id, fichier, labo, type_document, statut, motif, total_affiche, "
-            "total_calcule, modele_extraction FROM factures ORDER BY id DESC").fetchall()
-        return TEMPLATES.TemplateResponse(request, "factures.html", {"rows": rows})
+            f"total_calcule, modele_extraction FROM factures {where} "
+            "ORDER BY id DESC LIMIT ? OFFSET ?",
+            params + [TAILLE_PAGE, (page - 1) * TAILLE_PAGE]).fetchall()
+        return TEMPLATES.TemplateResponse(request, "factures.html", {
+            "rows": rows, "q": q, "page": page, "pages": pages,
+            "total": total, "taille": TAILLE_PAGE})
 
     @app.get("/export-base")
     def export_base():
@@ -226,13 +258,29 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
         return _ingerer_retro_un(fichier, extractor)
 
     @app.get("/retro-lignes", response_class=HTMLResponse)
-    def retro_lignes(request: Request):
-        rows = conn().execute(
+    def retro_lignes(request: Request, q: str = "", page: int = 1):
+        q = q.strip()
+        where, params = "", []
+        if q:
+            like = f"%{q}%"
+            where = ("WHERE d.numero LIKE ? OR l.designation LIKE ? OR l.code LIKE ? "
+                     "OR l.bl_numero LIKE ? OR l.bl_date LIKE ? OR l.statut_ecart LIKE ?")
+            params = [like] * 6
+        c = conn()
+        total = c.execute(
+            "SELECT COUNT(*) n FROM retro_lignes l "
+            f"JOIN retro_documents d ON d.id = l.retro_id {where}", params).fetchone()["n"]
+        pages = max(1, (total + TAILLE_PAGE - 1) // TAILLE_PAGE)
+        page = max(1, min(page, pages))
+        rows = c.execute(
             "SELECT d.numero, l.bl_numero, l.bl_date, l.designation, l.code, l.qte, "
             "l.tva, l.prix_net, l.statut_ecart "
-            "FROM retro_lignes l JOIN retro_documents d ON d.id = l.retro_id "
-            "ORDER BY l.id").fetchall()
-        return TEMPLATES.TemplateResponse(request, "retro_lignes.html", {"rows": rows})
+            f"FROM retro_lignes l JOIN retro_documents d ON d.id = l.retro_id {where} "
+            "ORDER BY l.id LIMIT ? OFFSET ?",
+            params + [TAILLE_PAGE, (page - 1) * TAILLE_PAGE]).fetchall()
+        return TEMPLATES.TemplateResponse(request, "retro_lignes.html", {
+            "rows": rows, "q": q, "page": page, "pages": pages,
+            "total": total, "taille": TAILLE_PAGE})
 
     @app.get("/resolution", response_class=HTMLResponse)
     def resolution(request: Request):
@@ -346,16 +394,31 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
         return f
 
     @app.get("/factures-retro", response_class=HTMLResponse)
-    def factures_retro(request: Request):
-        rows = conn().execute(
+    def factures_retro(request: Request, q: str = "", page: int = 1):
+        q = q.strip()
+        where, params = "", []
+        if q:
+            like = f"%{q}%"
+            where = ("WHERE d.numero LIKE ? OR d.pharmacie_emettrice LIKE ? "
+                     "OR d.pharmacie_destinataire LIKE ? OR d.date_vente LIKE ?")
+            params = [like] * 4
+        c = conn()
+        total = c.execute(
+            f"SELECT COUNT(*) n FROM retro_documents d {where}", params).fetchone()["n"]
+        pages = max(1, (total + TAILLE_PAGE - 1) // TAILLE_PAGE)
+        page = max(1, min(page, pages))
+        rows = c.execute(
             "SELECT d.id, d.numero, d.pharmacie_emettrice, d.pharmacie_destinataire, "
             "d.reconciliation_ok, COUNT(l.id) n_lignes, "
             "SUM(CASE WHEN l.statut_ecart='rouge' THEN 1 ELSE 0 END) n_rouge, "
             "(SELECT COUNT(*) FROM retro_documents d2 WHERE d2.numero = d.numero "
             " AND d.numero IS NOT NULL) AS n_meme_numero "
-            "FROM retro_documents d LEFT JOIN retro_lignes l ON l.retro_id = d.id "
-            "GROUP BY d.id ORDER BY d.id DESC").fetchall()
-        return TEMPLATES.TemplateResponse(request, "factures_retro.html", {"rows": rows})
+            f"FROM retro_documents d LEFT JOIN retro_lignes l ON l.retro_id = d.id {where} "
+            "GROUP BY d.id ORDER BY d.id DESC LIMIT ? OFFSET ?",
+            params + [TAILLE_PAGE, (page - 1) * TAILLE_PAGE]).fetchall()
+        return TEMPLATES.TemplateResponse(request, "factures_retro.html", {
+            "rows": rows, "q": q, "page": page, "pages": pages,
+            "total": total, "taille": TAILLE_PAGE})
 
     @app.get("/facture/{retro_id}", response_class=HTMLResponse)
     def facture(request: Request, retro_id: int):

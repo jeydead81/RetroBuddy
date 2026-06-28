@@ -6,6 +6,15 @@
   facture d'origine est ré-importée. Le <strong>PA net</strong> se recalcule tout seul
   à partir du brut et de la remise (vous pouvez le forcer).
 </p>
+
+<form method="get" style="display:flex; gap:.5rem; margin:.4rem 0 1rem; flex-wrap:wrap;">
+  <input type="search" name="q" value="{{ q }}"
+         placeholder="Rechercher : code, désignation, labo, date (ex. 08/2025)…"
+         style="flex:1; min-width:260px;">
+  <button type="submit">Rechercher</button>
+  {% if q %}<a href="/referentiel"><button type="button">Effacer</button></a>{% endif %}
+</form>
+
 <table id="table-ref">
   <tr><th>Code</th><th>Type</th><th>Labo</th><th>Date</th><th>Désignation</th>
       <th>PA brut</th><th>Remise %</th><th>PA net</th><th></th></tr>
@@ -22,9 +31,20 @@
     </td>
   </tr>
   {% else %}
-  <tr><td colspan="9" style="color:var(--grey); padding:1rem;">Référentiel vide — importez vos factures laboratoires à l'<a href="/import-labos">étape 1</a>.</td></tr>
+  <tr><td colspan="9" style="color:var(--grey); padding:1rem;">
+    {% if q %}Aucun résultat pour « {{ q }} ».{% else %}Référentiel vide — importez vos factures laboratoires à l'<a href="/import-labos">étape 1</a>.{% endif %}
+  </td></tr>
   {% endfor %}
 </table>
+
+{% if total > taille %}
+<p style="display:flex; gap:.9rem; align-items:center; flex-wrap:wrap; color:var(--grey);">
+  <span>{{ (page-1)*taille + 1 }}–{{ [page*taille, total]|min }} sur {{ total }}</span>
+  {% if page > 1 %}<a href="?q={{ q|urlencode }}&page={{ page-1 }}">‹ Précédent</a>{% endif %}
+  <span>page {{ page }} / {{ pages }}</span>
+  {% if page < pages %}<a href="?q={{ q|urlencode }}&page={{ page+1 }}">Suivant ›</a>{% endif %}
+</p>
+{% endif %}
 
 <script>
 function val(tr, cls) { const v = tr.querySelector(cls).value; return v === "" ? null : parseFloat(v); }
@@ -50,7 +70,6 @@ async function majRef(btn) {
   const d = await r.json();
   tr.querySelector(".f-net").value = d.prix_net != null ? d.prix_net : "";
   tr.querySelector(".marque").textContent = "✎ modifié";
-  const avant = btn.textContent;
   btn.textContent = "✓ Enregistré";
   setTimeout(() => { btn.textContent = "Enregistrer"; }, 1500);
 }
