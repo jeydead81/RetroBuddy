@@ -4,10 +4,14 @@ PRIX_PAR_MTOK = {
     "claude-opus-4-8": (5.0, 25.0),
 }
 
+# Conversion approximative $ -> € (les coûts affichés sont purement indicatifs).
+TAUX_USD_EUR = 0.92
+
 
 def cout_appel(model, usage) -> float:
-    """Coût $ d'un appel d'extraction, à partir de l'`usage` renvoyé par l'API.
+    """Coût € (approximatif) d'un appel d'extraction, à partir de l'`usage` de l'API.
 
+    Calculé en $ via `PRIX_PAR_MTOK` puis converti en € via `TAUX_USD_EUR`.
     `input_tokens` = portion non cachée (plein tarif). Cache lu ≈ ×0,1,
     cache écrit ≈ ×1,25. Modèle inconnu → 0 (pas de tarif connu).
     """
@@ -18,4 +22,4 @@ def cout_appel(model, usage) -> float:
     cache_write = getattr(usage, "cache_creation_input_tokens", 0) or 0
     cout_in = (inp + cache_read * 0.1 + cache_write * 1.25) * prix_in / 1_000_000
     cout_out = out * prix_out / 1_000_000
-    return cout_in + cout_out
+    return (cout_in + cout_out) * TAUX_USD_EUR

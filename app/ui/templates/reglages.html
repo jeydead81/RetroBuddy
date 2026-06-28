@@ -53,8 +53,8 @@
 
 <div class="carte">
   <h2>Coûts d'extraction (depuis la dernière réinitialisation)</h2>
-  <p>Labo : <strong>{{ "%.4f"|format(cout_labo) }}</strong> $ ·
-     Rétrocession : <strong>{{ "%.4f"|format(cout_retro) }}</strong> $</p>
+  <p>Labo : <strong>{{ "%.2f"|format(cout_labo) }}</strong> € ·
+     Rétrocession : <strong>{{ "%.2f"|format(cout_retro) }}</strong> €</p>
   <p style="color:var(--grey); font-size:.9rem;">La réinitialisation ne supprime aucune donnée :
      elle remet seulement l'affichage cumulé à zéro pour repartir d'une vue propre.</p>
   <form action="/cout/reset/labo" method="post" style="display:inline;"><button>Réinitialiser coût labo</button></form>

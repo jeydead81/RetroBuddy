@@ -33,9 +33,9 @@ def test_cout_reset_baseline_non_destructif(tmp_path):
     c = get_connection(client.app.state.db_path)
     c.execute("INSERT INTO factures (fichier, cout_estime) VALUES ('f.pdf', 0.05)")
     c.commit()
-    assert "0.0500" in client.get("/import-labos").text        # coût visible avant reset
+    assert ">0.05<" in client.get("/import-labos").text        # coût visible avant reset (€, 2 déc.)
     client.post("/cout/reset/labo")
-    assert "0.0000" in client.get("/import-labos").text        # vue remise à zéro (baseline)
+    assert ">0.00<" in client.get("/import-labos").text        # vue remise à zéro (baseline)
     # la donnée n'est PAS supprimée
     assert c.execute("SELECT COUNT(*) n FROM factures").fetchone()["n"] == 1
 

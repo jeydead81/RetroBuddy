@@ -4,7 +4,7 @@
 <h1>Import factures laboratoires</h1>
 
 <p>Déjà en base : <strong id="n-base">{{ n_total }}</strong> factures ·
-   Coût cumulé : <strong id="cout-base">{{ "%.4f"|format(cout_total or 0) }}</strong> $</p>
+   Coût cumulé : <strong id="cout-base">{{ "%.2f"|format(cout_total or 0) }}</strong> €</p>
 
 <form id="form-ingest" action="/ingest" method="post" enctype="multipart/form-data">
   <input id="input-fichiers" type="file" name="fichiers" accept="application/pdf" multiple required>
@@ -16,7 +16,7 @@
   <div class="barre-fond"><div id="barre" class="barre-jauge"></div></div>
   <p id="recap"></p>
   <table>
-    <tr><th>Fichier</th><th>Statut</th><th>Coût $</th><th>Motif</th></tr>
+    <tr><th>Fichier</th><th>Statut</th><th>Coût €</th><th>Motif</th></tr>
     <tbody id="liste"></tbody>
   </table>
 </div>
@@ -29,13 +29,13 @@
     <li>Ignorées : {{ recap.get("ignoree", 0) }}</li>
     <li>En revue : {{ recap.get("en_revue", 0) }}</li>
     <li>Erreurs : {{ recap.get("erreur", 0) }}</li>
-    <li>Coût du lot : {{ "%.4f"|format(cout_lot or 0) }} $</li>
+    <li>Coût du lot : {{ "%.2f"|format(cout_lot or 0) }} €</li>
   </ul>
   <table>
-    <tr><th>Fichier</th><th>Statut</th><th>Coût $</th><th>Motif</th></tr>
+    <tr><th>Fichier</th><th>Statut</th><th>Coût €</th><th>Motif</th></tr>
     {% for nom, statut, motif, cout in details %}
       <tr><td>{{ nom }}</td><td>{{ ui.badge(statut) }}</td>
-          <td>{{ "%.5f"|format(cout or 0) }}</td><td>{{ motif or "" }}</td></tr>
+          <td>{{ "%.2f"|format(cout or 0) }}</td><td>{{ motif or "" }}</td></tr>
     {% endfor %}
   </table>
 {% endif %}
@@ -64,17 +64,17 @@
       t[r.statut] = (t[r.statut] || 0) + 1;
       cout += (r.cout || 0);
       if (r.n_total != null) document.getElementById("n-base").textContent = r.n_total;
-      if (r.cout_total != null) document.getElementById("cout-base").textContent = Number(r.cout_total).toFixed(4);
+      if (r.cout_total != null) document.getElementById("cout-base").textContent = Number(r.cout_total).toFixed(2);
       const tr = document.createElement("tr");
       tr.appendChild(td(r.fichier)); tr.appendChild(badgeCell(r.statut));
-      tr.appendChild(td((r.cout || 0).toFixed(5))); tr.appendChild(td(r.motif || ""));
+      tr.appendChild(td((r.cout || 0).toFixed(2))); tr.appendChild(td(r.motif || ""));
       liste.appendChild(tr);
     }
     document.getElementById("compteur").textContent = j.fait + " / " + j.total;
     document.getElementById("barre").style.width = (j.total ? Math.round(100 * j.fait / j.total) : 0) + "%";
     document.getElementById("recap").textContent =
       "Ingérées " + t.ingeree + " · Ignorées " + t.ignoree + " · En revue " + t.en_revue +
-      " · Erreurs " + t.erreur + " · Coût du lot : " + cout.toFixed(4) + " $";
+      " · Erreurs " + t.erreur + " · Coût du lot : " + cout.toFixed(2) + " €";
   }
 
   async function suivre(jobId) {
