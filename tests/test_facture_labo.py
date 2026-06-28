@@ -122,6 +122,24 @@ def test_recuperer_net_ignore_lignes_ug(tmp_path):
     assert c.execute("SELECT COUNT(*) n FROM referentiel_prix").fetchone()["n"] == 0
 
 
+def test_filtre_sans_prix(tmp_path):
+    client = _client(tmp_path)
+    c = get_connection(client.app.state.db_path)
+    # facture A : ligne avec montant mais sans net -> récupérable
+    c.execute("INSERT INTO factures (id, fichier, statut) VALUES (1, 'AAA.pdf', 'ingeree')")
+    c.execute("INSERT INTO lignes_facture (facture_id, designation, qte, montant_ht) "
+              "VALUES (1, 'x', 2, 10.0)")
+    # facture B : ligne avec net -> pas concernée
+    c.execute("INSERT INTO factures (id, fichier, statut) VALUES (2, 'BBB.pdf', 'ingeree')")
+    c.execute("INSERT INTO lignes_facture (facture_id, designation, qte, prix_net, montant_ht) "
+              "VALUES (2, 'y', 1, 5.0, 5.0)")
+    c.commit()
+    t = client.get("/factures?filtre=sans_prix").text
+    assert "AAA.pdf" in t                              # la facture récupérable
+    assert "BBB.pdf" not in t                          # exclue du filtre
+    assert "Filtre : factures sans prix exploitable" in t
+
+
 def test_detail_inexistant_redirige(tmp_path):
     client = _client(tmp_path)
     r = client.get("/facture-labo/999", follow_redirects=False)

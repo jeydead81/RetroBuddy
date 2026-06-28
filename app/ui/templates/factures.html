@@ -10,6 +10,7 @@
 {% if n_recup %}
 <div style="background:#FFFBEB; border:1px solid #FDE68A; border-radius:12px; padding:.7rem 1rem; margin:.4rem 0;">
   <strong>{{ n_recup }} facture(s)</strong> ingérée(s) sans prix exploitable (PA net non extrait).
+  <a href="?filtre=sans_prix" style="font-weight:600;">→ les afficher</a>
   <form action="/factures/recuperer-net" method="post" style="display:inline; margin-left:.4rem;"
         onsubmit="return confirm('Récupérer les PA net manquants (net = PA brut × (1 − remise)) et les verser au référentiel ?');">
     <button type="submit">Récupérer les PA net manquants</button>
@@ -20,13 +21,21 @@
 <form method="get" style="display:flex; gap:.5rem; margin:.4rem 0 1rem; flex-wrap:wrap;">
   <input type="search" name="q" value="{{ q }}"
          placeholder="Rechercher : fichier, labo, statut, motif, date…" style="flex:1; min-width:260px;">
+  <input type="hidden" name="filtre" value="{{ filtre }}">
   <button type="submit">Rechercher</button>
-  {% if q %}<a href="/factures"><button type="button">Effacer</button></a>{% endif %}
+  {% if q %}<a href="?filtre={{ filtre }}"><button type="button">Effacer</button></a>{% endif %}
 </form>
+
+{% if filtre == 'sans_prix' %}
+<p style="margin:-.4rem 0 1rem;">
+  <span class="badge b-warn">Filtre : factures sans prix exploitable ({{ total }})</span>
+  <a href="?q={{ q|urlencode }}" style="margin-left:.4rem;">✕ tout afficher</a>
+</p>
+{% endif %}
 
 {% macro th(label, key) %}
   {%- set nsens = 'desc' if (tri == key and sens == 'asc') else 'asc' -%}
-  <th style="white-space:nowrap;"><a href="?q={{ q|urlencode }}&tri={{ key }}&sens={{ nsens }}"
+  <th style="white-space:nowrap;"><a href="?q={{ q|urlencode }}&filtre={{ filtre }}&tri={{ key }}&sens={{ nsens }}"
        style="color:inherit; text-decoration:none;">{{ label }}{% if tri == key %} <span style="font-size:.8em;">{{ '▲' if sens == 'asc' else '▼' }}</span>{% endif %}</a></th>
 {% endmacro %}
 
@@ -47,9 +56,9 @@
 {% if total > taille %}
 <p style="display:flex; gap:.9rem; align-items:center; flex-wrap:wrap; color:var(--grey);">
   <span>{{ (page-1)*taille + 1 }}–{{ [page*taille, total]|min }} sur {{ total }}</span>
-  {% if page > 1 %}<a href="?q={{ q|urlencode }}&tri={{ tri }}&sens={{ sens }}&page={{ page-1 }}">‹ Précédent</a>{% endif %}
+  {% if page > 1 %}<a href="?q={{ q|urlencode }}&filtre={{ filtre }}&tri={{ tri }}&sens={{ sens }}&page={{ page-1 }}">‹ Précédent</a>{% endif %}
   <span>page {{ page }} / {{ pages }}</span>
-  {% if page < pages %}<a href="?q={{ q|urlencode }}&tri={{ tri }}&sens={{ sens }}&page={{ page+1 }}">Suivant ›</a>{% endif %}
+  {% if page < pages %}<a href="?q={{ q|urlencode }}&filtre={{ filtre }}&tri={{ tri }}&sens={{ sens }}&page={{ page+1 }}">Suivant ›</a>{% endif %}
 </p>
 {% endif %}
 {% endblock %}

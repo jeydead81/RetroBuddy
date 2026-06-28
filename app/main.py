@@ -213,14 +213,19 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
 
     @app.get("/factures", response_class=HTMLResponse)
     def factures(request: Request, q: str = "", page: int = 1,
-                 tri: str = "id", sens: str = "desc"):
+                 tri: str = "id", sens: str = "desc", filtre: str = ""):
         q = q.strip()
-        where, params = "", []
+        conds, params = [], []
         if q:
             like = f"%{q}%"
-            where = ("WHERE fichier LIKE ? OR labo LIKE ? OR statut LIKE ? "
-                     "OR motif LIKE ? OR date_facture LIKE ?")
-            params = [like] * 5
+            conds.append("(fichier LIKE ? OR labo LIKE ? OR statut LIKE ? "
+                         "OR motif LIKE ? OR date_facture LIKE ?)")
+            params += [like] * 5
+        if filtre == "sans_prix":
+            conds.append("statut IN ('ingeree','en_revue') AND id IN "
+                         "(SELECT facture_id FROM lignes_facture WHERE prix_net IS NULL "
+                         "AND montant_ht IS NOT NULL AND qte > 0)")
+        where = ("WHERE " + " AND ".join(conds)) if conds else ""
         col = COLS_TRI_FACTURES.get(tri, "id")
         sens = "asc" if sens == "asc" else "desc"
         c = conn()
@@ -240,7 +245,8 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
         ).fetchone()["n"]
         return TEMPLATES.TemplateResponse(request, "factures.html", {
             "rows": rows, "q": q, "page": page, "pages": pages, "total": total,
-            "taille": TAILLE_PAGE, "tri": tri, "sens": sens, "n_recup": n_recup})
+            "taille": TAILLE_PAGE, "tri": tri, "sens": sens, "n_recup": n_recup,
+            "filtre": filtre})
 
     @app.get("/facture-labo/{fid}", response_class=HTMLResponse)
     def facture_labo(request: Request, fid: int):
