@@ -27,13 +27,7 @@ l'IA qui lit les PDF).
 
 ## 1. Récupérer RetroBuddy
 
-Deux options :
-
-- **Recommandé (mises à jour faciles)** : installez d'abord **Git** ([télécharger ici](https://git-scm.com/download/win), tout laisser par défaut). Puis ouvrez un dossier, clic droit › *« Ouvrir dans le Terminal »*, et tapez :
-  ```
-  git clone https://github.com/jeydead81/RetroBuddy.git
-  ```
-- **Plus simple (sans mises à jour automatiques)** : sur la [page GitHub](https://github.com/jeydead81/RetroBuddy), bouton vert **« Code › Download ZIP »**, puis **extraire** le dossier où vous voulez.
+Sur la [page GitHub](https://github.com/jeydead81/RetroBuddy), clique sur le bouton vert **« Code › Download ZIP »**, puis **extrais** le dossier (clic droit › *Extraire tout…*) où tu veux — par exemple sur le Bureau. **Pas besoin de compte GitHub ni de Git.**
 
 ## 2. Installer
 
@@ -84,9 +78,7 @@ Onglets de consultation : **Référentiel** (prix, modifiables à la main), **Fa
 
 # 🔄 Mettre à jour
 
-Si vous avez installé via **git clone** : double-cliquez sur **`update.bat`**. Il récupère la dernière version. **Vos données (base + clé) ne sont jamais touchées.**
-
-> Installé via ZIP ? Les mises à jour automatiques ne marchent pas — réinstallez via *git clone* pour en profiter.
+Double-clique sur **`update.bat`** : il télécharge la dernière version et l'installe. **Pas besoin de Git**, et **ta base de données + ta clé ne sont jamais touchées** (elles ne sont pas dans le téléchargement).
 
 # 💾 Sauvegarde & partage
 
@@ -127,6 +119,6 @@ La clé API se renseigne via l'UI (⚙ Réglages) ou dans `config.local.yaml` (g
 
 Garde-fous d'extraction : **complétude** (Σ lignes = total HT), **cohérence ligne** (qté × prix = montant), **TVA par taux**, **anti-troncature**, **anti-doublon**. Voir `CADRAGE_RETROCESSION.md` et `docs/superpowers/`.
 
-> ⚠️ Une fois distribué aux confrères : **ne pas force-push `main`** (casse `git pull` côté `update.bat`).
+> ⚠️ Le dépôt doit rester **public** pour que le « Download ZIP » et `update.bat` (téléchargement anonyme du ZIP de `main`) fonctionnent chez les confrères.
 
 </details>

@@ -12,7 +12,7 @@
     padding:.65rem 0; border-top:1px solid var(--border); }
   .ligne-suppr .nom{ font-weight:600; min-width:200px; }
   .ligne-suppr .cnt{ color:var(--grey); font-size:.88rem; min-width:90px; }
-  .ligne-suppr form{ display:flex; gap:.4rem; align-items:center; margin-left:auto; }
+  .ligne-suppr form{ display:flex; gap:.4rem; align-items:center; }
   .ligne-suppr input{ width:8.5rem; }
   button.rouge{ background:var(--danger); }
   button.rouge:hover:not(:disabled){ background:#b91c1c; }
@@ -65,7 +65,7 @@
 <div class="carte danger">
   <h2>Suppression des données</h2>
   <p><strong>Action irréversible.</strong> Pensez à <a href="/export-base">exporter la base</a> d'abord.
-     Tapez <code>SUPPRIMER</code> dans le champ pour confirmer chaque suppression.</p>
+     Tapez <code>SUPPRIMER</code> dans le champ, puis <strong>Entrée</strong> (ou le bouton <strong>Supprimer</strong>) pour confirmer.</p>
 
   {% macro ligne_suppr(quoi, nom, n) %}
   <div class="ligne-suppr">
