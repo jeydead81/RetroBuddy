@@ -258,7 +258,7 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
         if f is None:
             return RedirectResponse("/factures", status_code=303)
         lignes = c.execute(
-            "SELECT code, type_code, code_interne, designation, qte, prix_brut, "
+            "SELECT id, code, type_code, code_interne, designation, qte, prix_brut, "
             "remise_pct, prix_net, montant_ht, checksum_ok, valide, motif_ligne "
             "FROM lignes_facture WHERE facture_id=? ORDER BY id", (fid,)).fetchall()
         # Cohérence par ligne : qté×PA net ≈ montant HT -> repère la ligne fautive.
@@ -307,6 +307,31 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
                   "motif='intégré au référentiel après vérification manuelle' WHERE id=?", (fid,))
         c.commit()
         return RedirectResponse(f"/facture-labo/{fid}?ok=1", status_code=303)
+
+    @app.post("/facture-labo/{fid}/supprimer-lignes")
+    def supprimer_lignes_facture(fid: int, payload: dict):
+        """Supprime des lignes d'une facture labo (non facturables : UG, meubles, RFA…),
+        retire l'entrée au référentiel si la ligne y figurait, et recalcule le total."""
+        c = conn()
+        f = c.execute("SELECT date_facture FROM factures WHERE id=?", (fid,)).fetchone()
+        ids = [int(i) for i in payload.get("ids", [])]
+        if f is None or not ids:
+            return {"ok": False, "supprimees": 0}
+        qmarks = ",".join("?" * len(ids))
+        lignes = c.execute(
+            f"SELECT id, code, code_interne FROM lignes_facture "
+            f"WHERE facture_id=? AND id IN ({qmarks})", [fid] + ids).fetchall()
+        for l in lignes:
+            code = l["code"] or l["code_interne"]
+            if code:
+                c.execute("DELETE FROM referentiel_prix WHERE facture_id=? AND code=? "
+                          "AND date_facture=?", (fid, code, f["date_facture"]))
+            c.execute("DELETE FROM lignes_facture WHERE id=?", (l["id"],))
+        s = c.execute("SELECT COALESCE(SUM(montant_ht), 0) s FROM lignes_facture "
+                      "WHERE facture_id=?", (fid,)).fetchone()["s"]
+        c.execute("UPDATE factures SET total_calcule=? WHERE id=?", (round(s, 2), fid))
+        c.commit()
+        return {"ok": True, "supprimees": len(lignes)}
 
     @app.post("/factures/recuperer-net")
     def recuperer_net():

@@ -13,6 +13,12 @@
   .pastille{ font-size:.78rem; color:#991B1B; font-weight:600; white-space:nowrap; }
   .pastille-warn{ font-size:.78rem; color:#B45309; font-weight:600; white-space:nowrap; }
   .note{ font-size:.74rem; color:var(--grey); }
+  tr.a-suppr td{ text-decoration:line-through; opacity:.5; background:#FEE2E2 !important; }
+  .x-suppr{ background:transparent; color:#991B1B; border:1px solid #FECACA; border-radius:6px;
+    padding:.1rem .45rem; cursor:pointer; font-weight:700; line-height:1; }
+  .x-suppr:hover{ background:#FEE2E2; }
+  #barre-suppr{ position:sticky; bottom:.4rem; display:none; gap:.6rem; align-items:center;
+    background:#FEF2F2; border:1px solid #FECACA; border-radius:10px; padding:.6rem .9rem; margin:.6rem 0; }
 </style>
 
 <p><a href="/factures">← Factures laboratoires</a></p>
@@ -50,7 +56,7 @@
 
 <table>
   <tr><th>Code</th><th>Type</th><th>Désignation</th><th>Qté</th><th>PA brut</th><th>Remise %</th>
-      <th>PA net</th><th>Montant HT</th><th>Qté×net attendu</th><th>Au réf. ?</th></tr>
+      <th>PA net</th><th>Montant HT</th><th>Qté×net attendu</th><th>Au réf. ?</th><th></th></tr>
   {% for d in details %}
   {% set l = d.l %}
   <tr class="{{ 'incoherent' if d.incoherent else ('net-manquant' if d.net_manquant else '') }}">
@@ -64,9 +70,10 @@
     <td>{{ "%.2f"|format(l["montant_ht"]) if l["montant_ht"] is not none else "" }}</td>
     <td>{% if d.net_manquant %}<span class="pastille-warn">PA net non extrait</span>{% else %}{{ "%.2f"|format(d.attendu) }}{% if d.incoherent %} <span class="pastille">≠ montant</span>{% endif %}{% endif %}</td>
     <td>{% if l["valide"] %}✓{% else %}<span style="color:var(--grey);">non</span>{% if l["motif_ligne"] %}<br><span class="note">{{ l["motif_ligne"] }}</span>{% endif %}{% endif %}</td>
+    <td><button type="button" class="x-suppr" title="Marquer cette ligne pour suppression" onclick="toggleSuppr(this, {{ l['id'] }})">✕</button></td>
   </tr>
   {% else %}
-  <tr><td colspan="10" style="color:var(--grey); padding:1rem;">Aucune ligne extraite.</td></tr>
+  <tr><td colspan="11" style="color:var(--grey); padding:1rem;">Aucune ligne extraite.</td></tr>
   {% endfor %}
 </table>
 
@@ -82,4 +89,35 @@
   </form>
 </div>
 {% endif %}
+
+<div id="barre-suppr">
+  <strong><span id="n-suppr">0</span></strong> ligne(s) à supprimer ·
+  <button type="button" onclick="appliquerSuppr()">Appliquer la suppression</button>
+  <button type="button" onclick="annulerSuppr()">Annuler</button>
+</div>
+
+<script>
+const aSupprimer = new Set();
+function toggleSuppr(btn, id) {
+  const tr = btn.closest("tr");
+  if (aSupprimer.has(id)) { aSupprimer.delete(id); tr.classList.remove("a-suppr"); btn.textContent = "✕"; }
+  else { aSupprimer.add(id); tr.classList.add("a-suppr"); btn.textContent = "↺"; }
+  document.getElementById("n-suppr").textContent = aSupprimer.size;
+  document.getElementById("barre-suppr").style.display = aSupprimer.size ? "flex" : "none";
+}
+function annulerSuppr() {
+  aSupprimer.clear();
+  document.querySelectorAll("tr.a-suppr").forEach(tr => tr.classList.remove("a-suppr"));
+  document.querySelectorAll(".x-suppr").forEach(b => b.textContent = "✕");
+  document.getElementById("barre-suppr").style.display = "none";
+}
+async function appliquerSuppr() {
+  if (!aSupprimer.size) return;
+  if (!confirm(`Supprimer définitivement ${aSupprimer.size} ligne(s) de cette facture ?`)) return;
+  const r = await fetch("/facture-labo/{{ f['id'] }}/supprimer-lignes", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids: [...aSupprimer] }) });
+  if (r.ok) location.reload();
+}
+</script>
 {% endblock %}

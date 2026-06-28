@@ -140,6 +140,39 @@ def test_filtre_sans_prix(tmp_path):
     assert "Filtre : factures sans prix exploitable" in t
 
 
+def test_supprimer_lignes_facture(tmp_path):
+    client = _client(tmp_path)
+    c = get_connection(client.app.state.db_path)
+    c.execute("INSERT INTO factures (id, fichier, date_facture, statut, total_affiche) "
+              "VALUES (1, 'f.pdf', '08/09/2025', 'ingeree', 77.29)")
+    # ligne meuble (montant 0, au réf.) + ligne payante (conservée)
+    c.execute("INSERT INTO lignes_facture (id, facture_id, code, designation, qte, montant_ht, valide) "
+              "VALUES (10, 1, '3595898151707', 'MEUBLE', 1, 0.0, 0)")
+    c.execute("INSERT INTO lignes_facture (id, facture_id, code, designation, qte, prix_net, "
+              "montant_ht, valide) VALUES (11, 1, '5400951991535', 'VALDA', 12, 6.44, 77.29, 1)")
+    c.execute("INSERT INTO referentiel_prix (code, date_facture, prix_net, facture_id) "
+              "VALUES ('3595898151707', '08/09/2025', 0.0, 1)")
+    c.commit()
+    r = client.post("/facture-labo/1/supprimer-lignes", json={"ids": [10]})
+    assert r.json()["supprimees"] == 1
+    ids = [x["id"] for x in c.execute("SELECT id FROM lignes_facture WHERE facture_id=1").fetchall()]
+    assert ids == [11]                                  # meuble supprimé, payante conservée
+    assert c.execute("SELECT COUNT(*) n FROM referentiel_prix WHERE code='3595898151707'"
+                     ).fetchone()["n"] == 0             # entrée réf. de la ligne nettoyée
+    assert c.execute("SELECT total_calcule FROM factures WHERE id=1").fetchone()["total_calcule"] == 77.29
+
+
+def test_supprimer_lignes_scope_facture(tmp_path):
+    # garde-fou : impossible de supprimer la ligne d'une AUTRE facture
+    client = _client(tmp_path)
+    c = get_connection(client.app.state.db_path)
+    c.execute("INSERT INTO factures (id, fichier) VALUES (1, 'a.pdf'), (2, 'b.pdf')")
+    c.execute("INSERT INTO lignes_facture (id, facture_id, designation) VALUES (99, 2, 'AUTRE')")
+    c.commit()
+    client.post("/facture-labo/1/supprimer-lignes", json={"ids": [99]})
+    assert c.execute("SELECT COUNT(*) n FROM lignes_facture WHERE id=99").fetchone()["n"] == 1
+
+
 def test_detail_inexistant_redirige(tmp_path):
     client = _client(tmp_path)
     r = client.get("/facture-labo/999", follow_redirects=False)
