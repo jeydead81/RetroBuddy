@@ -24,7 +24,30 @@
   .ps{ color:var(--grey); font-size:.92rem; }
   @media (prefers-reduced-motion:reduce){ .etape:hover{ transform:none; } }
   @media (max-width:640px){ .hero-img{ width:104px; height:104px; } }
+  .cle-banner{ background:#FFFBEB; border:1px solid #FDE68A; border-radius:var(--radius);
+    padding:1rem 1.2rem; margin-bottom:1.4rem; }
+  .cle-banner form{ display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; margin:.5rem 0 0; }
+  .cle-banner input[type=password]{ flex:1; min-width:240px; }
+  .cle-ok{ color:#166534; font-size:.92rem; margin-bottom:1rem; }
 </style>
+
+{% if not cle_presente %}
+<div class="cle-banner">
+  <strong>🔑 Clé API Anthropic non configurée.</strong>
+  RetroBuddy en a besoin pour lire les factures. Collez-la ci-dessous — elle est stockée
+  en local (jamais partagée, jamais réaffichée en entier).
+  <form action="/config/cle" method="post">
+    <input type="password" name="cle" placeholder="sk-ant-…" autocomplete="off" required>
+    <input type="hidden" name="retour" value="/">
+    <button type="submit">Enregistrer</button>
+  </form>
+  {% if request.query_params.get('err') == 'cle' %}
+    <p class="erreur" style="margin:.5rem 0 0;">Format inattendu (la clé doit commencer par « sk-ant- »).</p>
+  {% endif %}
+</div>
+{% elif request.query_params.get('ok') == 'cle' %}
+<p class="cle-ok">✓ Clé API enregistrée.</p>
+{% endif %}
 
 <section class="hero">
   <img src="/mascotte.png" alt="Mascotte RetroBuddy : un robot détendu dans un caducée" class="hero-img">

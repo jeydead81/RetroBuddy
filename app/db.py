@@ -74,6 +74,10 @@ CREATE TABLE IF NOT EXISTS correspondance_codes (
 CREATE TABLE IF NOT EXISTS abreviations_labo (
   abrev TEXT PRIMARY KEY, complet TEXT
 );
+
+CREATE TABLE IF NOT EXISTS parametres (
+  cle TEXT PRIMARY KEY, valeur TEXT
+);
 """
 
 # Colonnes ajoutées après la V1 initiale. Migration idempotente : la base

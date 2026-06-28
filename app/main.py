@@ -1,11 +1,11 @@
 import tempfile
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
-from app.config import charger_config
+from app.config import charger_config, enregistrer_cle_api
 from app.db import get_connection, init_db
 from app.temps1.extraction_ia import ClaudeExtractor
 from app.temps1.pdf_reader import lire_pdf
@@ -48,13 +48,28 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
     def conn():
         return get_connection(app.state.db_path)
 
+    def _param(cle, defaut="0"):
+        r = conn().execute("SELECT valeur FROM parametres WHERE cle=?", (cle,)).fetchone()
+        return r["valeur"] if r else defaut
+
+    def _set_param(cle, valeur):
+        c = conn()
+        c.execute("INSERT INTO parametres(cle, valeur) VALUES (?, ?) "
+                  "ON CONFLICT(cle) DO UPDATE SET valeur=excluded.valeur", (cle, str(valeur)))
+        c.commit()
+
+    def _cle_info():
+        cle = (charger_config().get("anthropic_api_key") or "").strip()
+        masquee = ("…" + cle[-4:]) if len(cle) >= 4 else ("…" if cle else "")
+        return bool(cle), masquee
+
     def _nombre_factures():
         return conn().execute("SELECT COUNT(*) n FROM factures").fetchone()["n"]
 
     def _cout_total():
         v = conn().execute(
             "SELECT COALESCE(SUM(cout_estime), 0) c FROM factures").fetchone()["c"]
-        return round(v, 4)
+        return round(max(0.0, v - float(_param("cout_baseline_labo", "0"))), 4)
 
     def _ingerer_un(fichier: UploadFile, extractor):
         """Traite UN PDF et renvoie un dict JSON-able."""
@@ -76,9 +91,11 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
 
     @app.get("/", response_class=HTMLResponse)
     def accueil(request: Request):
+        cle_presente, cle_masquee = _cle_info()
         return TEMPLATES.TemplateResponse(
             request, "home.html",
-            {"n_total": _nombre_factures(), "cout_total": _cout_total()})
+            {"n_total": _nombre_factures(), "cout_total": _cout_total(),
+             "cle_presente": cle_presente, "cle_masquee": cle_masquee})
 
     @app.get("/import-labos", response_class=HTMLResponse)
     def import_labos(request: Request):
@@ -163,7 +180,7 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
     def _cout_total_retro():
         v = conn().execute(
             "SELECT COALESCE(SUM(cout_estime), 0) c FROM retro_documents").fetchone()["c"]
-        return round(v, 4)
+        return round(max(0.0, v - float(_param("cout_baseline_retro", "0"))), 4)
 
     def _ingerer_retro_un(fichier, extractor):
         with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
@@ -373,6 +390,68 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
     @app.get("/mascotte.png", include_in_schema=False)
     def mascotte():
         return FileResponse("app/ui/static/mascotte.png")
+
+    # ---- Réglages : clé API, coûts, suppression de données ----
+
+    def _compteurs_donnees():
+        c = conn()
+        n = lambda t: c.execute(f"SELECT COUNT(*) n FROM {t}").fetchone()["n"]
+        return {"referentiel": n("referentiel_prix"), "factures": n("factures"),
+                "lignes_facture": n("lignes_facture"), "retro": n("retro_documents"),
+                "retro_lignes": n("retro_lignes")}
+
+    @app.get("/reglages", response_class=HTMLResponse)
+    def reglages(request: Request):
+        cle_presente, cle_masquee = _cle_info()
+        return TEMPLATES.TemplateResponse(request, "reglages.html", {
+            "cle_presente": cle_presente, "cle_masquee": cle_masquee,
+            "compteurs": _compteurs_donnees(),
+            "cout_labo": _cout_total(), "cout_retro": _cout_total_retro()})
+
+    @app.post("/config/cle")
+    def config_cle(cle: str = Form(...), retour: str = Form("/reglages")):
+        cle = cle.strip()
+        sep = "&" if "?" in retour else "?"
+        if not cle.startswith("sk-ant-"):           # validation format, clé jamais loggée
+            return RedirectResponse(retour + sep + "err=cle", status_code=303)
+        enregistrer_cle_api(cle)
+        return RedirectResponse(retour + sep + "ok=cle", status_code=303)
+
+    @app.post("/cout/reset/{quoi}")
+    def cout_reset(quoi: str):
+        # Baseline non-destructif : on mémorise le cumul courant comme "point zéro".
+        if quoi in ("labo", "tout"):
+            v = conn().execute("SELECT COALESCE(SUM(cout_estime),0) c FROM factures").fetchone()["c"]
+            _set_param("cout_baseline_labo", v)
+        if quoi in ("retro", "tout"):
+            v = conn().execute("SELECT COALESCE(SUM(cout_estime),0) c FROM retro_documents").fetchone()["c"]
+            _set_param("cout_baseline_retro", v)
+        return RedirectResponse("/reglages?ok=cout-" + quoi, status_code=303)
+
+    @app.post("/donnees/supprimer/{quoi}")
+    def donnees_supprimer(quoi: str, confirmation: str = Form(...)):
+        if confirmation.strip().upper() != "SUPPRIMER":
+            return RedirectResponse("/reglages?err=confirmation", status_code=303)
+        tables = {
+            "referentiel": ["referentiel_prix"],
+            "factures": ["lignes_facture", "factures"],
+            "retro": ["retro_lignes", "retro_documents"],
+            "tout": ["lignes_facture", "factures", "referentiel_prix",
+                     "retro_lignes", "retro_documents", "correspondance_codes"],
+        }
+        if quoi not in tables:
+            raise HTTPException(status_code=404, detail="catégorie inconnue")
+        c = conn()
+        for t in tables[quoi]:
+            c.execute(f"DELETE FROM {t}")
+        if quoi in ("factures", "tout"):           # données effacées -> baseline coût remise à 0
+            c.execute("INSERT INTO parametres(cle,valeur) VALUES('cout_baseline_labo','0') "
+                      "ON CONFLICT(cle) DO UPDATE SET valeur='0'")
+        if quoi in ("retro", "tout"):
+            c.execute("INSERT INTO parametres(cle,valeur) VALUES('cout_baseline_retro','0') "
+                      "ON CONFLICT(cle) DO UPDATE SET valeur='0'")
+        c.commit()
+        return RedirectResponse("/reglages?ok=suppr-" + quoi, status_code=303)
 
     return app
 

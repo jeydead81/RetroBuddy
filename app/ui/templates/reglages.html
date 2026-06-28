@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block contenu %}
+<style>
+  .carte{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+    padding:1.2rem 1.4rem; margin:1rem 0; box-shadow:var(--shadow); }
+  .carte h2{ margin-top:0; }
+  .reglages-form{ display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; margin:.5rem 0 0; }
+  .reglages-form input[type=password]{ min-width:240px; flex:1; }
+  .carte.danger{ border-color:#FECACA; }
+  .carte.danger h2{ color:#991B1B; }
+  .ligne-suppr{ display:flex; gap:.6rem; align-items:center; flex-wrap:wrap;
+    padding:.65rem 0; border-top:1px solid var(--border); }
+  .ligne-suppr .nom{ font-weight:600; min-width:200px; }
+  .ligne-suppr .cnt{ color:var(--grey); font-size:.88rem; min-width:90px; }
+  .ligne-suppr form{ display:flex; gap:.4rem; align-items:center; margin-left:auto; }
+  .ligne-suppr input{ width:8.5rem; }
+  button.rouge{ background:var(--danger); }
+  button.rouge:hover:not(:disabled){ background:#b91c1c; }
+  .flash-ok{ color:#166534; font-weight:600; }
+  .flash-err{ color:#991B1B; font-weight:600; }
+</style>
+
+<h1>⚙ Réglages</h1>
+
+{% set ok = request.query_params.get('ok') %}
+{% set err = request.query_params.get('err') %}
+{% if ok and ok != 'cle' %}<p class="flash-ok">✓ Opération effectuée.</p>{% endif %}
+{% if err == 'confirmation' %}<p class="flash-err">Suppression annulée : il faut taper SUPPRIMER pour confirmer.</p>{% endif %}
+
+<div class="carte">
+  <h2>Clé API Anthropic</h2>
+  {% if cle_presente %}
+    <p>✓ Clé configurée <strong>{{ cle_masquee }}</strong> — stockée en local, jamais partagée ni réaffichée en entier.</p>
+    <details>
+      <summary>Remplacer la clé</summary>
+      <form class="reglages-form" action="/config/cle" method="post">
+        <input type="password" name="cle" placeholder="sk-ant-…" autocomplete="off" required>
+        <input type="hidden" name="retour" value="/reglages">
+        <button type="submit">Enregistrer</button>
+      </form>
+    </details>
+  {% else %}
+    <p>Aucune clé détectée. RetroBuddy en a besoin pour lire les factures.</p>
+    <form class="reglages-form" action="/config/cle" method="post">
+      <input type="password" name="cle" placeholder="sk-ant-…" autocomplete="off" required>
+      <input type="hidden" name="retour" value="/reglages">
+      <button type="submit">Enregistrer</button>
+    </form>
+  {% endif %}
+  {% if ok == 'cle' %}<p class="flash-ok" style="margin:.5rem 0 0;">✓ Clé API enregistrée.</p>{% endif %}
+  {% if err == 'cle' %}<p class="flash-err" style="margin:.5rem 0 0;">Format inattendu (doit commencer par « sk-ant- »).</p>{% endif %}
+</div>
+
+<div class="carte">
+  <h2>Coûts d'extraction (depuis la dernière réinitialisation)</h2>
+  <p>Labo : <strong>{{ "%.4f"|format(cout_labo) }}</strong> $ ·
+     Rétrocession : <strong>{{ "%.4f"|format(cout_retro) }}</strong> $</p>
+  <p style="color:var(--grey); font-size:.9rem;">La réinitialisation ne supprime aucune donnée :
+     elle remet seulement l'affichage cumulé à zéro pour repartir d'une vue propre.</p>
+  <form action="/cout/reset/labo" method="post" style="display:inline;"><button>Réinitialiser coût labo</button></form>
+  <form action="/cout/reset/retro" method="post" style="display:inline;"><button>Réinitialiser coût rétro</button></form>
+  <form action="/cout/reset/tout" method="post" style="display:inline;"><button>Réinitialiser les deux</button></form>
+</div>
+
+<div class="carte danger">
+  <h2>Suppression des données</h2>
+  <p><strong>Action irréversible.</strong> Pensez à <a href="/export-base">exporter la base</a> d'abord.
+     Tapez <code>SUPPRIMER</code> dans le champ pour confirmer chaque suppression.</p>
+
+  {% macro ligne_suppr(quoi, nom, n) %}
+  <div class="ligne-suppr">
+    <span class="nom">{{ nom }}</span><span class="cnt">{{ n }} enreg.</span>
+    <form action="/donnees/supprimer/{{ quoi }}" method="post"
+          onsubmit="return confirm('Supprimer définitivement : {{ nom }} ? Cette action est irréversible.');">
+      <input type="text" name="confirmation" placeholder="SUPPRIMER" autocomplete="off" required>
+      <button type="submit" class="rouge">Supprimer</button>
+    </form>
+  </div>
+  {% endmacro %}
+
+  {{ ligne_suppr('referentiel', 'Référentiel prix', compteurs.referentiel) }}
+  {{ ligne_suppr('factures', 'Factures laboratoires', compteurs.factures) }}
+  {{ ligne_suppr('retro', 'Rétrocessions (+ factures rétro générées)', compteurs.retro) }}
+  {{ ligne_suppr('tout', 'TOUT réinitialiser', compteurs.referentiel + compteurs.factures + compteurs.retro) }}
+</div>
+{% endblock %}
