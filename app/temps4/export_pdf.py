@@ -1,5 +1,6 @@
 import io
 
+from app.format_util import fmt_qte
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
@@ -13,8 +14,13 @@ def facture_pdf(facture):
     styles = getSampleStyleSheet()
     el = []
 
+    mentions = getattr(facture, "mentions_emettrice", None)
+    if mentions:                                          # en-tête légal de l'émettrice
+        el.append(Paragraph(mentions.replace("\n", "<br/>"), styles["Normal"]))
+        el.append(Spacer(1, 4 * mm))
     el.append(Paragraph(f"Facture de rétrocession {facture.numero or ''}", styles["Title"]))
-    el.append(Paragraph(f"Émettrice : {facture.emettrice or ''}", styles["Normal"]))
+    if not mentions:                                      # sinon, l'émettrice en clair
+        el.append(Paragraph(f"Émettrice : {facture.emettrice or ''}", styles["Normal"]))
     el.append(Paragraph(f"Destinataire : {facture.destinataire or ''}", styles["Normal"]))
     el.append(Paragraph(f"Date : {facture.date_vente or ''}", styles["Normal"]))
     if getattr(facture, "n_rouge", 0):
@@ -29,8 +35,8 @@ def facture_pdf(facture):
             f"Bon livraison {g.bl_numero or ''} du {g.bl_date or ''}", styles["Heading4"]))
         data = [entete]
         for l in g.lignes:
-            data.append([l.designation, l.code or "", l.qte, l.prix_brut, l.remise_pct,
-                         l.prix_net, l.tva, l.montant_ht])
+            data.append([l.designation, l.code or "", fmt_qte(l.qte), l.prix_brut,
+                         l.remise_pct, l.prix_net, l.tva, l.montant_ht])
         t = Table(data, repeatRows=1)
         t.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),

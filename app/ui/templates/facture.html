@@ -1,8 +1,13 @@
 {% extends "base.html" %}
 {% block contenu %}
 <h1>Facture {{ f.numero or "" }}</h1>
+{% if f.mentions_emettrice %}
+<pre style="font-family:inherit; white-space:pre-wrap; margin:.2rem 0 .6rem; font-size:.92rem; color:var(--fg);">{{ f.mentions_emettrice }}</pre>
+<p>Facturé à : <strong>{{ f.destinataire or "" }}</strong> · {{ f.date_vente or "" }}</p>
+{% else %}
 <p>Émettrice : <strong>{{ f.emettrice or "" }}</strong> →
    Destinataire : <strong>{{ f.destinataire or "" }}</strong> · {{ f.date_vente or "" }}</p>
+{% endif %}
 
 {% if not f.reconciliation_ok %}
   <p class="erreur"><strong>⚠ Contrôle de complétude en échec — {{ f.motif_reconciliation }}.</strong></p>
@@ -54,7 +59,7 @@
         <th>PA net</th><th>TVA</th><th>Montant HT</th><th></th></tr>
     {% for l in g.lignes %}
       <tr data-id="{{ l.id }}" data-ug="{{ l.ug }}">
-          <td>{{ l.designation }}</td><td>{{ l.code or "" }}</td><td class="q">{{ l.qte }}</td>
+          <td>{{ l.designation }}</td><td>{{ l.code or "" }}</td><td class="q">{{ l.qte | qte }}</td>
           <td><input class="f-brut" type="number" step="0.001" style="width:6rem;" value="{{ l.prix_brut if l.prix_brut is not none else '' }}"></td>
           <td><input class="f-remise" type="number" step="0.01" style="width:5rem;" value="{{ l.remise_pct if l.remise_pct is not none else '' }}"></td>
           <td><input class="f-net" type="number" step="0.001" style="width:6rem;" value="{{ l.prix_net if l.prix_net is not none else '' }}"></td>

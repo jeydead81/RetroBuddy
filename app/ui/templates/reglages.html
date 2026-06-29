@@ -52,6 +52,24 @@
 </div>
 
 <div class="carte">
+  <h2>En-têtes de facturation (mentions légales)</h2>
+  <p style="color:var(--grey); font-size:.9rem;">Ces mentions s'impriment en haut de la facture
+     générée, selon la pharmacie qui facture (émettrice). Une par pharmacie.</p>
+  {% if ok == 'entete' %}<p class="flash-ok">✓ En-tête enregistré.</p>{% endif %}
+  {% for e in entetes %}
+  <form action="/entetes/maj" method="post" style="margin:.7rem 0; padding-top:.6rem; border-top:1px solid var(--border);">
+    <label style="font-weight:600;">{{ e.emettrice }}</label>
+    <input type="hidden" name="emettrice" value="{{ e.emettrice }}">
+    <textarea name="mentions" rows="7" style="width:100%; font-family:inherit; margin:.3rem 0;"
+      placeholder="Nom, capital social, gérant, adresse, SIRET, TVA intracommunautaire…">{{ e.mentions }}</textarea>
+    <button type="submit">Enregistrer cet en-tête</button>
+  </form>
+  {% else %}
+  <p style="color:var(--grey);">Aucune pharmacie émettrice détectée — importez des factures LGO à l'étape 2.</p>
+  {% endfor %}
+</div>
+
+<div class="carte">
   <h2>Coûts d'extraction (depuis la dernière réinitialisation)</h2>
   <p>Labo : <strong>{{ "%.2f"|format(cout_labo) }}</strong> € ·
      Rétrocession : <strong>{{ "%.2f"|format(cout_retro) }}</strong> €</p>

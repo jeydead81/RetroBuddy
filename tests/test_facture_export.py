@@ -63,6 +63,41 @@ def test_recontroler_garde_ecart_significatif(tmp_path):
     assert c.execute("SELECT reconciliation_ok FROM retro_documents WHERE id=1").fetchone()[0] == 0
 
 
+def test_mentions_emettrice_sur_facture(tmp_path):
+    client = _client(tmp_path)
+    c = get_connection(client.app.state.db_path)
+    c.execute("INSERT INTO retro_documents (id, fichier, pharmacie_emettrice, numero, date_vente) "
+              "VALUES (1, 'r.pdf', 'PHARMACIE TEST', 'F1', '01/09/2025')")
+    c.execute("INSERT INTO retro_lignes (retro_id, designation, qte, prix_net, tva, statut_ecart, "
+              "bl_numero, bl_date) VALUES (1, 'OK', 2, 5.0, 20.0, 'resolu', 'BL1', '01/09/2025')")
+    c.execute("INSERT INTO entetes_facture (emettrice, mentions) "
+              "VALUES ('PHARMACIE TEST', 'MENTIONS LEGALES TEST\nSIRET 000')")
+    c.commit()
+    page = client.get("/facture/1").text
+    assert "MENTIONS LEGALES TEST" in page
+    assert "SIRET 000" in page
+
+
+def test_mentions_match_insensible_casse_espaces(tmp_path):
+    from app.temps4.facture_builder import construire_facture
+    client = _client(tmp_path)
+    c = get_connection(client.app.state.db_path)
+    c.execute("INSERT INTO retro_documents (id, fichier, pharmacie_emettrice) "
+              "VALUES (1, 'r.pdf', '  pharmacie  test ')")
+    c.execute("INSERT INTO entetes_facture (emettrice, mentions) VALUES ('PHARMACIE TEST', 'XYZ')")
+    c.commit()
+    f = construire_facture(c, 1)
+    assert f.mentions_emettrice == "XYZ"               # repli normalisé (casse/espaces)
+
+
+def test_entete_maj(tmp_path):
+    client = _client(tmp_path)
+    c = get_connection(client.app.state.db_path)
+    client.post("/entetes/maj", data={"emettrice": "PHIE X", "mentions": "Bloc légal"})
+    r = c.execute("SELECT mentions FROM entetes_facture WHERE emettrice='PHIE X'").fetchone()
+    assert r["mentions"] == "Bloc légal"
+
+
 def test_facture_lignes_editables(tmp_path):
     client = _client(tmp_path)
     c = get_connection(client.app.state.db_path)

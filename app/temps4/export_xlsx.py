@@ -1,5 +1,6 @@
 import io
 
+from app.format_util import fmt_qte
 from openpyxl import Workbook
 from openpyxl.styles import Font
 
@@ -10,6 +11,10 @@ def facture_xlsx(facture):
     ws.title = "Facture"
     gras = Font(bold=True)
 
+    if getattr(facture, "mentions_emettrice", None):
+        for ligne in facture.mentions_emettrice.split("\n"):
+            ws.append([ligne])
+        ws.append([])
     ws.append(["Facture de rétrocession", facture.numero or ""])
     ws.append(["Émettrice", facture.emettrice or ""])
     ws.append(["Destinataire", facture.destinataire or ""])
@@ -25,8 +30,8 @@ def facture_xlsx(facture):
         cell.font = gras
     for g in facture.groupes:
         for l in g.lignes:
-            ws.append([g.bl_numero, g.bl_date, l.designation, l.code, l.qte, l.prix_brut,
-                       l.remise_pct, l.prix_net, l.tva, l.montant_ht])
+            ws.append([g.bl_numero, g.bl_date, l.designation, l.code, fmt_qte(l.qte),
+                       l.prix_brut, l.remise_pct, l.prix_net, l.tva, l.montant_ht])
 
     ws.append([])
     ws.append(["Ventilation TVA", "Taux", "Base HT", "Montant TVA"])

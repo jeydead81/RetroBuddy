@@ -32,7 +32,7 @@
   <tr data-id="{{ r['id'] }}" class="ligne {{ r['statut_ecart'] }}">
     <td>{{ r["designation"] }}</td>
     <td>{{ r["code"] }}</td>
-    <td>{{ r["qte"] }}</td>
+    <td>{{ r["qte"] | qte }}</td>
     <td>{{ r["bl_numero"] }}</td>
     <td>{{ r["bl_date"] }}</td>
     <td>{% if r["statut_ecart"] == "orange" %}{{ r["code_resolu"] }} <small>({{ "%.2f"|format(r["score_match"] or 0) }})</small>{% endif %}</td>

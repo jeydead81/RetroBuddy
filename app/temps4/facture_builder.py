@@ -47,6 +47,7 @@ class Facture:
     total_ht_affiche: float | None = None
     total_ht_calcule: float | None = None
     motif_reconciliation: str | None = None
+    mentions_emettrice: str | None = None   # en-tête légal de la pharmacie émettrice
 
 
 def construire_facture(conn, retro_id):
@@ -57,6 +58,16 @@ def construire_facture(conn, retro_id):
     if doc is None:
         return None
     reco_ok = doc["reconciliation_ok"] != 0   # None (anciennes lignes) -> considéré OK
+    emet = (doc["pharmacie_emettrice"] or "").strip()
+    ent = conn.execute("SELECT mentions FROM entetes_facture WHERE emettrice = ?",
+                       (emet,)).fetchone()
+    mentions = ent["mentions"] if ent else None
+    if mentions is None and emet:                         # repli : casse / espaces
+        cible = " ".join(emet.upper().split())
+        for r in conn.execute("SELECT emettrice, mentions FROM entetes_facture"):
+            if " ".join((r["emettrice"] or "").upper().split()) == cible:
+                mentions = r["mentions"]
+                break
 
     lignes = conn.execute(
         "SELECT id, designation, code, qte, prix_brut, remise_pct, prix_net, tva, ug, "
@@ -101,4 +112,5 @@ def construire_facture(conn, retro_id):
                    reconciliation_ok=reco_ok,
                    total_ht_affiche=doc["total_ht_affiche"],
                    total_ht_calcule=doc["total_ht_calcule"],
-                   motif_reconciliation=doc["motif_reconciliation"])
+                   motif_reconciliation=doc["motif_reconciliation"],
+                   mentions_emettrice=mentions)

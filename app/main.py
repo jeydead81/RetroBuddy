@@ -7,6 +7,7 @@ from fastapi.templating import Jinja2Templates
 
 from app.config import charger_config, enregistrer_cle_api
 from app.db import get_connection, init_db
+from app.format_util import fmt_qte
 from app.temps1.extraction_ia import ClaudeExtractor
 from app.temps1.pdf_reader import lire_pdf
 from app.temps1 import selection
@@ -25,6 +26,7 @@ from app.temps4.recalcul import recalculer_prix_facture
 from app.jobs import RegistreJobs, lancer_job
 
 TEMPLATES = Jinja2Templates(directory="app/ui/templates")
+TEMPLATES.env.filters["qte"] = fmt_qte   # affiche les quantités en entier (3.0 -> 3)
 
 
 def get_extractor():
@@ -697,13 +699,32 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
                 "lignes_facture": n("lignes_facture"), "retro": n("retro_documents"),
                 "retro_lignes": n("retro_lignes")}
 
+    def _entetes_facturation():
+        c = conn()
+        emetteurs = {r["pharmacie_emettrice"] for r in c.execute(
+            "SELECT DISTINCT pharmacie_emettrice FROM retro_documents "
+            "WHERE pharmacie_emettrice IS NOT NULL AND pharmacie_emettrice != ''")}
+        stored = {r["emettrice"]: r["mentions"] for r in c.execute(
+            "SELECT emettrice, mentions FROM entetes_facture")}
+        emetteurs |= set(stored)
+        return [{"emettrice": e, "mentions": stored.get(e, "")} for e in sorted(emetteurs)]
+
     @app.get("/reglages", response_class=HTMLResponse)
     def reglages(request: Request):
         cle_presente, cle_masquee = _cle_info()
         return TEMPLATES.TemplateResponse(request, "reglages.html", {
             "cle_presente": cle_presente, "cle_masquee": cle_masquee,
-            "compteurs": _compteurs_donnees(),
+            "compteurs": _compteurs_donnees(), "entetes": _entetes_facturation(),
             "cout_labo": _cout_total(), "cout_retro": _cout_total_retro()})
+
+    @app.post("/entetes/maj")
+    def entetes_maj(emettrice: str = Form(...), mentions: str = Form("")):
+        c = conn()
+        c.execute("INSERT INTO entetes_facture (emettrice, mentions) VALUES (?, ?) "
+                  "ON CONFLICT(emettrice) DO UPDATE SET mentions=excluded.mentions",
+                  (emettrice.strip(), mentions))
+        c.commit()
+        return RedirectResponse("/reglages?ok=entete", status_code=303)
 
     @app.post("/config/cle")
     def config_cle(cle: str = Form(...), retour: str = Form("/reglages")):

@@ -63,7 +63,7 @@
     <td>{{ l["code"] or l["code_interne"] or "—" }}{% if l["checksum_ok"] == 0 and l["code"] %} <span class="pastille">code ?</span>{% endif %}</td>
     <td>{{ l["type_code"] or "" }}</td>
     <td>{{ l["designation"] }}</td>
-    <td>{{ l["qte"] if l["qte"] is not none else "" }}</td>
+    <td>{{ l["qte"] | qte }}</td>
     <td>{{ "%.4f"|format(l["prix_brut"]) if l["prix_brut"] is not none else "" }}</td>
     <td>{{ "%.2f"|format(l["remise_pct"]) if l["remise_pct"] is not none else "" }}</td>
     <td>{% if l["prix_net"] is not none %}{{ "%.4f"|format(l["prix_net"]) }}{% else %}<span class="pastille-warn">manquant</span>{% endif %}</td>

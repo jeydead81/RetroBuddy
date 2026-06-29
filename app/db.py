@@ -78,6 +78,10 @@ CREATE TABLE IF NOT EXISTS abreviations_labo (
 CREATE TABLE IF NOT EXISTS parametres (
   cle TEXT PRIMARY KEY, valeur TEXT
 );
+
+CREATE TABLE IF NOT EXISTS entetes_facture (
+  emettrice TEXT PRIMARY KEY, mentions TEXT
+);
 """
 
 # Colonnes ajoutées après la V1 initiale. Migration idempotente : la base

@@ -1,10 +1,16 @@
 import csv
 import io
 
+from app.format_util import fmt_qte
+
 
 def facture_csv(facture):
     buf = io.StringIO()
     w = csv.writer(buf, delimiter=";")
+    if getattr(facture, "mentions_emettrice", None):
+        for ligne in facture.mentions_emettrice.split("\n"):
+            w.writerow([ligne])
+        w.writerow([])
     w.writerow(["Facture de rétrocession", facture.numero or ""])
     w.writerow(["Émettrice", facture.emettrice or ""])
     w.writerow(["Destinataire", facture.destinataire or ""])
@@ -18,7 +24,7 @@ def facture_csv(facture):
     for g in facture.groupes:
         for l in g.lignes:
             w.writerow([g.bl_numero or "", g.bl_date or "", l.designation, l.code or "",
-                        l.qte, "" if l.prix_brut is None else l.prix_brut,
+                        fmt_qte(l.qte), "" if l.prix_brut is None else l.prix_brut,
                         "" if l.remise_pct is None else l.remise_pct, l.prix_net,
                         "" if l.tva is None else l.tva, l.montant_ht])
     w.writerow([])

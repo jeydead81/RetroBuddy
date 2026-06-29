@@ -28,7 +28,7 @@
       <th>Qté</th><th>TVA</th><th>PA net</th><th>Statut</th></tr>
   {% for r in rows %}
     <tr><td>{{ r["numero"] }}</td><td>{{ r["bl_numero"] }}</td><td>{{ r["bl_date"] }}</td>
-        <td>{{ r["designation"] }}</td><td>{{ r["code"] }}</td><td>{{ r["qte"] }}</td>
+        <td>{{ r["designation"] }}</td><td>{{ r["code"] }}</td><td>{{ r["qte"] | qte }}</td>
         <td>{{ r["tva"] }}</td><td>{{ r["prix_net"] }}</td>
         <td>{{ ui.badge(r["statut_ecart"]) }}</td></tr>
   {% else %}
