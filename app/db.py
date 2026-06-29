@@ -1,6 +1,8 @@
 import sqlite3
 from pathlib import Path
 
+from app.entetes_defaut import ENTETES_DEFAUT
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS factures (
   id INTEGER PRIMARY KEY,
@@ -120,7 +122,15 @@ def _migrer(conn):
             conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {typ}")
 
 
+def _seed_entetes(conn):
+    # INSERT OR IGNORE : ne remplace jamais une modification faite dans Réglages.
+    for emettrice, mentions in ENTETES_DEFAUT.items():
+        conn.execute("INSERT OR IGNORE INTO entetes_facture (emettrice, mentions) "
+                     "VALUES (?, ?)", (emettrice, mentions))
+
+
 def init_db(conn):
     conn.executescript(SCHEMA)
     _migrer(conn)
+    _seed_entetes(conn)
     conn.commit()

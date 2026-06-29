@@ -90,6 +90,17 @@ def test_mentions_match_insensible_casse_espaces(tmp_path):
     assert f.mentions_emettrice == "XYZ"               # repli normalisé (casse/espaces)
 
 
+def test_entetes_defaut_seedees(tmp_path):
+    from app.temps4.facture_builder import construire_facture
+    client = _client(tmp_path)                          # init_db seede les en-têtes par défaut
+    c = get_connection(client.app.state.db_path)
+    c.execute("INSERT INTO retro_documents (id, fichier, pharmacie_emettrice, numero) "
+              "VALUES (1, 'r.pdf', 'EURL PHARMACIE SERALY', 'F1')")
+    c.commit()
+    f = construire_facture(c, 1)
+    assert f.mentions_emettrice and "SIRET" in f.mentions_emettrice   # sans config manuelle
+
+
 def test_entete_maj(tmp_path):
     client = _client(tmp_path)
     c = get_connection(client.app.state.db_path)
