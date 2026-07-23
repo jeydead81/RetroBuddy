@@ -52,10 +52,12 @@ def test_ingest_un_renvoie_json(tmp_path):
 
 
 def test_ingest_un_compteur_total_incremente(tmp_path):
+    # Deux PDF aux octets DIFFÉRENTS (des octets identiques seraient dédupliqués).
     client = _client(tmp_path)
-    f = {"fichier": ("f.pdf", b"%PDF-1.4 fake", "application/pdf")}
-    assert client.post("/ingest-un", files=f).json()["n_total"] == 1
-    assert client.post("/ingest-un", files=f).json()["n_total"] == 2
+    f1 = {"fichier": ("f.pdf", b"%PDF-1.4 fake 1", "application/pdf")}
+    f2 = {"fichier": ("g.pdf", b"%PDF-1.4 fake 2", "application/pdf")}
+    assert client.post("/ingest-un", files=f1).json()["n_total"] == 1
+    assert client.post("/ingest-un", files=f2).json()["n_total"] == 2
 
 
 def test_accueil_affiche_total_en_base(tmp_path):

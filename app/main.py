@@ -1,3 +1,4 @@
+import hashlib
 import tempfile
 from pathlib import Path
 
@@ -27,6 +28,15 @@ from app.jobs import RegistreJobs, lancer_job
 
 TEMPLATES = Jinja2Templates(directory="app/ui/templates")
 TEMPLATES.env.filters["qte"] = fmt_qte   # affiche les quantités en entier (3.0 -> 3)
+
+
+def empreinte_fichier(chemin):
+    """SHA-256 des octets du fichier (dédup : même PDF => même extraction, 0 €)."""
+    h = hashlib.sha256()
+    with open(chemin, "rb") as f:
+        for bloc in iter(lambda: f.read(1 << 20), b""):
+            h.update(bloc)
+    return h.hexdigest()
 
 
 def get_extractor():
@@ -103,16 +113,34 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
             "SELECT COALESCE(SUM(cout_estime), 0) c FROM factures").fetchone()["c"]
         return round(max(0.0, v - float(_param("cout_baseline_labo", "0"))), 4)
 
+    def _doublon_pdf(chemin, table):
+        """(empreinte, id du doc existant aux mêmes octets, ou None)."""
+        emp = empreinte_fichier(chemin)
+        r = conn().execute(f"SELECT id FROM {table} WHERE empreinte = ?", (emp,)).fetchone()
+        return emp, (r["id"] if r else None)
+
+    def _marquer_empreinte(table, doc_id, emp):
+        if doc_id:
+            c = conn()
+            c.execute(f"UPDATE {table} SET empreinte = ? WHERE id = ?", (emp, doc_id))
+            c.commit()
+
     def _ingerer_un(fichier: UploadFile, extractor):
         """Traite UN PDF et renvoie un dict JSON-able."""
         with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
             tmp.write(fichier.file.read())
             chemin = tmp.name
         try:
-            pdf = lire_pdf(chemin)
-            pdf.nom = fichier.filename or pdf.nom
-            res = traiter_facture(conn(), pdf, extractor, app.state.config)
-            statut, motif, n_ref, cout = res.statut, res.motif, res.n_referentiel, res.cout
+            emp, deja = _doublon_pdf(chemin, "factures")
+            if deja:
+                statut, n_ref, cout = "ignoree", 0, 0.0
+                motif = f"PDF identique à la facture #{deja} déjà importée (0 €)"
+            else:
+                pdf = lire_pdf(chemin)
+                pdf.nom = fichier.filename or pdf.nom
+                res = traiter_facture(conn(), pdf, extractor, app.state.config)
+                _marquer_empreinte("factures", res.facture_id, emp)
+                statut, motif, n_ref, cout = res.statut, res.motif, res.n_referentiel, res.cout
         except Exception as e:  # un PDF qui échoue ne doit pas casser le lot
             statut, motif, n_ref, cout = "erreur", _motif_erreur(e), 0, 0.0
         finally:
@@ -397,11 +425,17 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
             tmp.write(fichier.file.read())
             chemin = tmp.name
         try:
-            pdf = lire_pdf(chemin)
-            pdf.nom = fichier.filename or pdf.nom
-            res = traiter_retro(conn(), pdf, extractor, app.state.config)
-            out = {"n_lignes": res.n_lignes, "n_resolu": res.n_resolu,
-                   "n_rouge": res.n_rouge, "cout": round(res.cout, 5)}
+            emp, deja = _doublon_pdf(chemin, "retro_documents")
+            if deja:
+                out = {"n_lignes": 0, "n_resolu": 0, "n_rouge": 0, "cout": 0.0,
+                       "erreur": f"PDF identique à la facture rétro #{deja} déjà importée (0 €)"}
+            else:
+                pdf = lire_pdf(chemin)
+                pdf.nom = fichier.filename or pdf.nom
+                res = traiter_retro(conn(), pdf, extractor, app.state.config)
+                _marquer_empreinte("retro_documents", res.retro_id, emp)
+                out = {"n_lignes": res.n_lignes, "n_resolu": res.n_resolu,
+                       "n_rouge": res.n_rouge, "cout": round(res.cout, 5)}
         except Exception as e:
             out = {"n_lignes": 0, "n_resolu": 0, "n_rouge": 0, "cout": 0.0,
                    "erreur": _motif_erreur(e)}
@@ -528,11 +562,17 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
 
     def _traiter_fichier_labo(nom, chemin, extractor):
         try:
-            pdf = lire_pdf(chemin)
-            pdf.nom = nom
-            res = traiter_facture(conn(), pdf, extractor, app.state.config)
-            out = {"statut": res.statut, "motif": res.motif,
-                   "n_referentiel": res.n_referentiel, "cout": round(res.cout, 5)}
+            emp, deja = _doublon_pdf(chemin, "factures")
+            if deja:
+                out = {"statut": "ignoree", "n_referentiel": 0, "cout": 0.0,
+                       "motif": f"PDF identique à la facture #{deja} déjà importée (0 €)"}
+            else:
+                pdf = lire_pdf(chemin)
+                pdf.nom = nom
+                res = traiter_facture(conn(), pdf, extractor, app.state.config)
+                _marquer_empreinte("factures", res.facture_id, emp)
+                out = {"statut": res.statut, "motif": res.motif,
+                       "n_referentiel": res.n_referentiel, "cout": round(res.cout, 5)}
         except Exception as e:
             out = {"statut": "erreur", "motif": _motif_erreur(e),
                    "n_referentiel": 0, "cout": 0.0}
@@ -543,11 +583,18 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
 
     def _traiter_fichier_retro(nom, chemin, extractor):
         try:
-            pdf = lire_pdf(chemin)
-            pdf.nom = nom
-            res = traiter_retro(conn(), pdf, extractor, app.state.config)
-            out = {"statut": "ok", "n_lignes": res.n_lignes, "n_resolu": res.n_resolu,
-                   "n_orange": res.n_orange, "n_rouge": res.n_rouge, "cout": round(res.cout, 5)}
+            emp, deja = _doublon_pdf(chemin, "retro_documents")
+            if deja:
+                out = {"statut": "ignoree",
+                       "motif": f"PDF identique à la facture rétro #{deja} déjà importée (0 €)",
+                       "n_lignes": 0, "n_resolu": 0, "n_orange": 0, "n_rouge": 0, "cout": 0.0}
+            else:
+                pdf = lire_pdf(chemin)
+                pdf.nom = nom
+                res = traiter_retro(conn(), pdf, extractor, app.state.config)
+                _marquer_empreinte("retro_documents", res.retro_id, emp)
+                out = {"statut": "ok", "n_lignes": res.n_lignes, "n_resolu": res.n_resolu,
+                       "n_orange": res.n_orange, "n_rouge": res.n_rouge, "cout": round(res.cout, 5)}
         except Exception as e:
             out = {"statut": "erreur", "motif": _motif_erreur(e),
                    "n_lignes": 0, "n_resolu": 0, "n_orange": 0, "n_rouge": 0, "cout": 0.0}

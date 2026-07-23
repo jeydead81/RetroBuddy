@@ -99,6 +99,8 @@ _COLONNES_AJOUTEES = [
     ("retro_documents", "total_ht_calcule", "REAL"),
     ("retro_documents", "reconciliation_ok", "INTEGER DEFAULT 1"),
     ("retro_documents", "motif_reconciliation", "TEXT"),
+    ("factures", "empreinte", "TEXT"),           # SHA-256 du PDF : dédup (0 € au ré-import)
+    ("retro_documents", "empreinte", "TEXT"),
 ]
 
 
