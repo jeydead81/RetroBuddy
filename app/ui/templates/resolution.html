@@ -7,8 +7,14 @@
   <span class="badge b-warn">À confirmer : {{ compteurs.a_confirmer }}</span>
   <span class="badge b-ok">Rapprochées auto : {{ compteurs.auto }}</span>
   {% if compteurs.manuel %}<span class="badge b-info">Complétées à la main : {{ compteurs.manuel }}</span>{% endif %}
-  <button onclick="rematch()">↻ Re-rapprocher</button>
+  <button id="btn-rematch" onclick="rematch()">↻ Re-rapprocher</button>
 </p>
+
+<div id="rematch-zone" style="display:none; margin:.5rem 0;">
+  <p style="margin:0 0 .25rem; color:var(--secondary); font-weight:600;">
+    Re-rapprochement en cours… <span id="rematch-compteur">0 / 0</span></p>
+  <div class="barre-fond"><div id="rematch-barre" class="barre-jauge" style="width:0%"></div></div>
+</div>
 {% set faits = compteurs.auto + compteurs.manuel %}
 <div class="barre-fond">
   <div class="barre-jauge" style="width: {{ (100 * faits / compteurs.total) if compteurs.total else 0 }}%"></div>
@@ -95,6 +101,21 @@ document.querySelectorAll("#table-resolution tr[data-id]").forEach(tr => {
 });
 async function accepter(id) { await fetch(`/resolution/ligne/${id}/accepter`, { method: "POST" }); location.reload(); }
 async function refuser(id) { await fetch(`/resolution/ligne/${id}/refuser`, { method: "POST" }); location.reload(); }
-async function rematch() { await fetch(`/resolution/rematch`, { method: "POST" }); location.reload(); }
+async function rematch() {
+  const btn = document.getElementById("btn-rematch");
+  if (btn) { btn.disabled = true; btn.textContent = "Re-rapprochement…"; }
+  document.getElementById("rematch-zone").style.display = "block";
+  const r = await (await fetch("/resolution/rematch/start", { method: "POST" })).json();
+  while (true) {
+    const j = await (await fetch("/resolution/rematch/progress/" + r.job_id)).json();
+    if (!j.introuvable) {
+      const pct = j.total ? Math.round(100 * j.fait / j.total) : 100;
+      document.getElementById("rematch-barre").style.width = pct + "%";
+      document.getElementById("rematch-compteur").textContent = j.fait + " / " + j.total;
+      if (j.termine) { location.reload(); return; }
+    }
+    await new Promise(res => setTimeout(res, 600));
+  }
+}
 </script>
 {% endblock %}

@@ -87,6 +87,7 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
     app.state.config = charger_config()
     app.state.jobs = RegistreJobs()
     app.state.jobs_retro = RegistreJobs()
+    app.state.jobs_rematch = RegistreJobs()
 
     init_db(get_connection(db_path))
 
@@ -557,6 +558,34 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
     @app.post("/resolution/rematch")
     def resolution_rematch():
         return rematcher(conn(), app.state.config)
+
+    @app.post("/resolution/rematch/start")
+    def resolution_rematch_start():
+        """Re-rapprochement en tâche de fond (barre de progression côté UI)."""
+        total = conn().execute(
+            "SELECT COUNT(*) n FROM retro_lignes "
+            "WHERE valide_utilisateur = 0 AND saisie_manuelle = 0").fetchone()["n"]
+        registre = app.state.jobs_rematch
+        job_id = registre.creer(total)
+
+        def _run():
+            try:
+                res = rematcher(conn(), app.state.config,
+                                progression=lambda fait, _t: registre.maj_avancement(job_id, fait))
+                registre.ajouter(job_id, {"resultat": res, "cout": 0.0}, compter=False)
+            except Exception as e:
+                registre.ajouter(job_id, {"erreur": _motif_erreur(e), "cout": 0.0},
+                                 compter=False)
+            finally:
+                registre.terminer(job_id)
+
+        threading.Thread(target=_run, daemon=True).start()
+        return {"job_id": job_id, "total": total}
+
+    @app.get("/resolution/rematch/progress/{job_id}")
+    def resolution_rematch_progress(job_id: str):
+        j = app.state.jobs_rematch.lire(job_id)
+        return j if j is not None else {"introuvable": True}
 
     def _enregistrer_temp(fichiers):
         paires = []

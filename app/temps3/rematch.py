@@ -2,9 +2,10 @@ from app.temps2 import calcul_prix, matching
 from app.temps2.normalisation_designation import charger_abreviations, dosages_concordants
 
 
-def rematcher(conn, config):
+def rematcher(conn, config, progression=None):
     """Rejoue passes 1-4 + calcul prix sur les lignes ni validées ni saisies.
 
+    `progression(fait, total)` est appelé régulièrement (barre de progression).
     Retourne les compteurs {resolu, orange, rouge} des lignes re-traitées.
     """
     seuil_bas = config.get("seuil_match_bas", 0.80)
@@ -15,8 +16,11 @@ def rematcher(conn, config):
     lignes = conn.execute(
         "SELECT id, code, designation, bl_date FROM retro_lignes "
         "WHERE valide_utilisateur = 0 AND saisie_manuelle = 0").fetchall()
+    total = len(lignes)
 
-    for l in lignes:
+    for i, l in enumerate(lignes):
+        if progression is not None and i % 25 == 0:
+            progression(i, total)
         code_resolu, passe = matching.resoudre_code(conn, l["code"])
         score, cand_desig = None, None
         if code_resolu is None:
@@ -46,4 +50,6 @@ def rematcher(conn, config):
             "passe_match=?, score_match=?, statut_ecart=?, valide_utilisateur=? WHERE id=?",
             (code_resolu, pb, rp, pn, passe, score, statut, valide, l["id"]))
     conn.commit()
+    if progression is not None:
+        progression(total, total)
     return compteurs
