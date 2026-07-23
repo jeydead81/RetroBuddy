@@ -405,6 +405,10 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
 
     @app.get("/export-base")
     def export_base():
+        try:                                     # WAL : replier le journal dans le .db
+            conn().execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        except Exception:
+            pass
         return FileResponse(app.state.db_path, filename="retrocession.db")
 
     @app.post("/import-base")

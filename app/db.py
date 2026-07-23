@@ -111,6 +111,13 @@ def get_connection(chemin="data/retrocession.db"):
     conn = sqlite3.connect(chemin)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    # App multi-thread (uvicorn) + une connexion ouverte par appel : sans ça, une
+    # écriture pendant qu'une lecture est en cours échoue en « database is locked ».
+    # WAL = lecteurs concurrents + 1 écrivain ; busy_timeout = attendre le verrou
+    # (5 s) au lieu d'échouer aussitôt. Corrige le 500 sur « Re-rapprocher ».
+    conn.execute("PRAGMA busy_timeout = 5000")
+    if chemin != ":memory:":
+        conn.execute("PRAGMA journal_mode = WAL")
     return conn
 
 
