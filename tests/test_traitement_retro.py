@@ -78,9 +78,20 @@ def test_ligne_rouge_code_absent(tmp_path):
     assert r["prix_net"] is None
 
 
-def test_ligne_rouge_prix_posterieur_au_bl(tmp_path):
+def test_prix_posterieur_proche_accepte(tmp_path):
     conn = _conn(tmp_path)
-    _ref(conn, "3400930000007", "20/08/2025", 4.5)   # prix APRÈS le BL
+    _ref(conn, "3400930000007", "20/08/2025", 4.5)   # prix 10 j APRÈS le BL -> accepté
+    retro = _retro([_ligne("3400930000007", "10/08/2025")])
+    res = traiter_retro(conn, _pdf(), MockExtractor(defaut=retro), CFG)
+    assert res.n_resolu == 1
+    r = conn.execute("SELECT statut_ecart, prix_net FROM retro_lignes").fetchone()
+    assert r["statut_ecart"] == "resolu"
+    assert r["prix_net"] == 4.5
+
+
+def test_ligne_rouge_prix_posterieur_hors_fenetre(tmp_path):
+    conn = _conn(tmp_path)
+    _ref(conn, "3400930000007", "20/11/2025", 4.5)   # ~3 mois après le BL -> refusé
     retro = _retro([_ligne("3400930000007", "10/08/2025")])
     res = traiter_retro(conn, _pdf(), MockExtractor(defaut=retro), CFG)
     assert res.n_rouge == 1

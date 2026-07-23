@@ -24,17 +24,35 @@ def test_dernier_prix_avant_date_bl(tmp_path):
     assert r["prix_net"] == 4.5
 
 
-def test_ignore_les_prix_posterieurs_au_bl(tmp_path):
+def test_prix_anterieur_prioritaire_sur_posterieur(tmp_path):
     conn = _conn(tmp_path)
     _ref(conn, "C", "01/07/2025", 5.0)
     _ref(conn, "C", "05/08/2025", 4.5)
-    r = prix_a_date(conn, "C", "15/07/2025")   # seul le 01/07 <= BL
+    r = prix_a_date(conn, "C", "15/07/2025")   # un antérieur existe -> il gagne
     assert r["prix_net"] == 5.0
 
 
-def test_aucun_prix_avant_le_bl(tmp_path):
+def test_repli_prix_posterieur_dans_la_fenetre(tmp_path):
+    # Cas MIGHTY PATCH : BL 08/09, seul prix au réf. daté 06/10 (28 j après).
+    # Mieux vaut ce prix proche qu'une ligne en anomalie.
     conn = _conn(tmp_path)
-    _ref(conn, "C", "05/08/2025", 4.5)
+    _ref(conn, "C", "06/10/2025", 5.10)
+    r = prix_a_date(conn, "C", "08/09/2025")
+    assert r is not None
+    assert r["prix_net"] == 5.10
+
+
+def test_repli_prend_le_posterieur_le_plus_proche(tmp_path):
+    conn = _conn(tmp_path)
+    _ref(conn, "C", "20/09/2025", 4.8)   # +12 j
+    _ref(conn, "C", "20/10/2025", 4.2)   # +42 j
+    r = prix_a_date(conn, "C", "08/09/2025")
+    assert r["prix_net"] == 4.8          # le plus proche du BL
+
+
+def test_posterieur_au_dela_de_2_mois_refuse(tmp_path):
+    conn = _conn(tmp_path)
+    _ref(conn, "C", "05/08/2025", 4.5)   # 65 j après le BL -> hors fenêtre
     assert prix_a_date(conn, "C", "01/06/2025") is None
 
 
