@@ -46,7 +46,7 @@ class _FakeResp:
 
 def _ext(resp):
     ext = ClaudeExtractor(api_key="test")          # pas d'appel réseau à la construction
-    ext._client = types.SimpleNamespace(
+    ext.client = types.SimpleNamespace(
         messages=types.SimpleNamespace(parse=lambda **kw: resp))
     return ext
 

@@ -45,17 +45,18 @@ class ClaudeExtractor:
 
     def __init__(self, api_key: str, prompt_path="prompts/extraction_facture.txt",
                  output_format=FactureExtraite):
-        self._client = anthropic.Anthropic(api_key=api_key)
-        self._prompt = Path(prompt_path).read_text(encoding="utf-8")
+        # client et prompt sont publics : le mode lot (extraction_lot) les réutilise.
+        self.client = anthropic.Anthropic(api_key=api_key)
+        self.prompt = Path(prompt_path).read_text(encoding="utf-8")
         self._output_format = output_format
         self.dernier_cout = 0.0
         self.cout_cumule = 0.0
 
     def extraire(self, pdf: PdfDocument, model: str):
-        resp = self._client.messages.parse(
+        resp = self.client.messages.parse(
             model=model,
             max_tokens=MAX_TOKENS_EXTRACTION,
-            system=[{"type": "text", "text": self._prompt,
+            system=[{"type": "text", "text": self.prompt,
                      "cache_control": {"type": "ephemeral"}}],
             messages=[{
                 "role": "user",

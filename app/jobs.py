@@ -16,13 +16,21 @@ class RegistreJobs:
                                   "details": [], "termine": False}
         return job_id
 
-    def ajouter(self, job_id, resultat):
+    def ajouter(self, job_id, resultat, compter=True):
         with self._lock:
             j = self._jobs.get(job_id)
             if j is not None:
-                j["fait"] += 1
+                if compter:
+                    j["fait"] += 1
                 j["cout"] = round(j["cout"] + float(resultat.get("cout", 0.0)), 5)
                 j["details"].append(resultat)
+
+    def maj_avancement(self, job_id, fait):
+        """Force le compteur d'avancement (mode lot : la barre suit le lot distant)."""
+        with self._lock:
+            j = self._jobs.get(job_id)
+            if j is not None:
+                j["fait"] = min(int(fait), j["total"])
 
     def terminer(self, job_id):
         with self._lock:

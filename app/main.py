@@ -1,5 +1,6 @@
 import hashlib
 import tempfile
+import threading
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request, UploadFile
@@ -10,11 +11,13 @@ from app.config import charger_config, enregistrer_cle_api
 from app.db import get_connection, init_db
 from app.format_util import fmt_qte
 from app.temps1.extraction_ia import ClaudeExtractor
-from app.temps1.pdf_reader import lire_pdf
+from app.temps1.extraction_lot import (EscaladeDifferee, ExtracteurPreExtrait,
+                                       attendre_lots, resultats_lots, soumettre_lots)
+from app.temps1.pdf_reader import PdfDocument, lire_pdf
 from app.temps1 import selection
 from app.temps1.pipeline import traiter_facture
 from app.temps1.referentiel import enregistrer_referentiel
-from app.temps1.schemas import LigneFacture
+from app.temps1.schemas import FactureExtraite, LigneFacture
 from app.temps2.schemas import RetroExtrait
 from app.temps2.traitement_retro import TOLERANCE_MIN_EUR, traiter_retro
 from app.temps3 import resolution as resolution_logique
@@ -604,12 +607,116 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
                     "cout_total": _cout_total_retro()})
         return out
 
+    # Au-delà de ce nombre de fichiers, l'extraction passe par la Batch API (-50 %).
+    SEUIL_LOT = 10
+
+    def _resultat_labo(nom, statut, motif, n_ref, cout):
+        return {"fichier": nom, "statut": statut, "motif": motif,
+                "n_referentiel": n_ref, "cout": round(cout, 5),
+                "n_total": _nombre_factures(), "cout_total": _cout_total()}
+
+    def _finaliser_fichier_lot(nom, chemin, emp, pre_extrait):
+        """Applique le pipeline habituel (classification, garde-fous, référentiel)
+        à un fichier dont l'extraction a déjà eu lieu en lot. EscaladeDifferee
+        remonte à l'appelant (2e lot Opus)."""
+        pdf = PdfDocument(nom=nom, base64="", taille_octets=0)
+        try:
+            res = traiter_facture(conn(), pdf, pre_extrait, app.state.config)
+            _marquer_empreinte("factures", res.facture_id, emp)
+            out = _resultat_labo(nom, res.statut, res.motif, res.n_referentiel, res.cout)
+        except EscaladeDifferee:
+            raise
+        except Exception as e:
+            out = _resultat_labo(nom, "erreur", _motif_erreur(e), 0, 0.0)
+        Path(chemin).unlink(missing_ok=True)
+        return out
+
+    def _job_lot_labo(job_id, paires, extractor):
+        """Import labo en mode lot : dédup, batch Sonnet, pipeline, batch Opus
+        pour les escalades. La barre de progression suit l'avancement du lot."""
+        registre = app.state.jobs
+        cfg = app.state.config
+        avance = 0
+
+        def _pousser(out):
+            nonlocal avance
+            registre.ajouter(job_id, out, compter=False)
+            avance += 1
+            registre.maj_avancement(job_id, avance)
+
+        try:
+            restants = []                      # [(nom, chemin, empreinte)]
+            for nom, chemin in paires:
+                emp, deja = _doublon_pdf(chemin, "factures")
+                if deja:
+                    Path(chemin).unlink(missing_ok=True)
+                    _pousser(_resultat_labo(
+                        nom, "ignoree",
+                        f"PDF identique à la facture #{deja} déjà importée (0 €)", 0, 0.0))
+                else:
+                    restants.append((nom, chemin, emp))
+
+            client, prompt = extractor.client, extractor.prompt
+            lots = soumettre_lots(client, cfg["model_defaut"], prompt, FactureExtraite,
+                                  [(str(i), chemin) for i, (_, chemin, _) in enumerate(restants)])
+            base = avance
+            attendre_lots(client, lots,
+                          progression=lambda n: registre.maj_avancement(job_id, base + n))
+
+            escalades = []                     # [(index, facture_sonnet, cout_sonnet)]
+            for cle, ok, resultat, cout in resultats_lots(
+                    client, lots, cfg["model_defaut"], FactureExtraite):
+                nom, chemin, emp = restants[int(cle)]
+                if not ok:
+                    Path(chemin).unlink(missing_ok=True)
+                    _pousser(_resultat_labo(nom, "erreur", resultat, 0, cout))
+                    continue
+                pre = ExtracteurPreExtrait({cfg["model_defaut"]: (resultat, cout)})
+                try:
+                    _pousser(_finaliser_fichier_lot(nom, chemin, emp, pre))
+                except EscaladeDifferee:
+                    escalades.append((int(cle), resultat, cout))
+
+            if escalades:
+                lots2 = soumettre_lots(
+                    client, cfg["model_escalade"], prompt, FactureExtraite,
+                    [(str(i), restants[i][1]) for i, _, _ in escalades])
+                attendre_lots(client, lots2)
+                sonnet_par_cle = {str(i): (f, c) for i, f, c in escalades}
+                for cle, ok, resultat, cout in resultats_lots(
+                        client, lots2, cfg["model_escalade"], FactureExtraite):
+                    nom, chemin, emp = restants[int(cle)]
+                    f_sonnet, c_sonnet = sonnet_par_cle[cle]
+                    if not ok:
+                        Path(chemin).unlink(missing_ok=True)
+                        _pousser(_resultat_labo(nom, "erreur", resultat, 0, c_sonnet + cout))
+                        continue
+                    pre = ExtracteurPreExtrait({
+                        cfg["model_defaut"]: (f_sonnet, c_sonnet),
+                        cfg["model_escalade"]: (resultat, cout)})
+                    _pousser(_finaliser_fichier_lot(nom, chemin, emp, pre))
+        except Exception as e:
+            # Échec global (réseau, lot rejeté…) : le signaler sans laisser le job tourner.
+            registre.ajouter(job_id, _resultat_labo(
+                "(lot)", "erreur", _motif_erreur(e), 0, 0.0), compter=False)
+        finally:
+            registre.terminer(job_id)
+
     @app.post("/ingest/start")
-    def ingest_start(fichiers: list[UploadFile], extractor=Depends(get_extractor)):
+    async def ingest_start(request: Request, extractor=Depends(get_extractor)):
+        # Parsing manuel du formulaire : la limite Starlette par défaut (1000 fichiers
+        # par requête) bloquerait les imports de campagnes complètes (3000+ PDF).
+        form = await request.form(max_files=50_000, max_fields=50_000)
+        fichiers = [f for f in form.getlist("fichiers") if hasattr(f, "file")]
         paires = _enregistrer_temp(fichiers)
         job_id = app.state.jobs.creer(len(paires))
-        lancer_job(app.state.jobs, job_id, paires,
-                   lambda n, c: _traiter_fichier_labo(n, c, extractor))
+        # Gros import + vrai extracteur Claude -> Batch API (-50 %, résultats différés).
+        if len(paires) >= SEUIL_LOT and hasattr(extractor, "client"):
+            threading.Thread(target=_job_lot_labo, args=(job_id, paires, extractor),
+                             daemon=True).start()
+        else:
+            lancer_job(app.state.jobs, job_id, paires,
+                       lambda n, c: _traiter_fichier_labo(n, c, extractor))
         return {"job_id": job_id, "total": len(paires)}
 
     @app.get("/ingest/progress/{job_id}")
@@ -618,7 +725,9 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
         return j if j is not None else {"introuvable": True}
 
     @app.post("/retro/ingest/start")
-    def retro_start(fichiers: list[UploadFile], extractor=Depends(get_retro_extractor)):
+    async def retro_start(request: Request, extractor=Depends(get_retro_extractor)):
+        form = await request.form(max_files=50_000, max_fields=50_000)
+        fichiers = [f for f in form.getlist("fichiers") if hasattr(f, "file")]
         paires = _enregistrer_temp(fichiers)
         job_id = app.state.jobs_retro.creer(len(paires))
         lancer_job(app.state.jobs_retro, job_id, paires,
