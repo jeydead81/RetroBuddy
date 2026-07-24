@@ -1,7 +1,9 @@
 from dataclasses import dataclass
 
+from app.temps1.pdf_split import decouper_pdf, nombre_pages
 from app.temps2 import calcul_prix, matching
 from app.temps2.normalisation_designation import charger_abreviations, dosages_concordants
+from app.temps2.schemas import RetroEntete, RetroExtrait
 
 
 @dataclass
@@ -18,6 +20,72 @@ class ResultatRetro:
 
 # En-dessous de ce seuil (€), un écart est du bruit d'arrondi, non significatif.
 TOLERANCE_MIN_EUR = 1.0
+
+# Une facture de ~180 lignes sature le plafond de tokens de sortie (extraction en un
+# appel tronquée). Au-delà de SEUIL_PAGES_SIMPLE pages on découpe d'emblée ; sinon on
+# tente un appel unique et on ne découpe qu'en cas de troncature.
+SEUIL_PAGES_SIMPLE = 12
+PAGES_PAR_LOT = 6
+
+
+def _est_troncature(e) -> bool:
+    """Vrai si l'exception traduit une réponse tronquée par le plafond de tokens
+    (JSON incomplet côté SDK, ou notre ExtractionError « tronquée »)."""
+    s = str(e).lower()
+    return any(k in s for k in ("tronqu", "invalid json", "eof while parsing", "json_invalid"))
+
+
+def _fusionner(morceaux):
+    """Fusionne les RetroExtrait des sous-PDF (dans l'ordre des pages). L'en-tête vient
+    du 1er morceau ; le Total HT affiché et la ventilation du morceau qui les porte (le
+    récap est sur la dernière page). Reporte le BL sur les lignes de continuation : un BL
+    peut déborder d'un morceau au suivant, dont la 1re ligne n'a pas revu l'en-tête « Bon
+    livraison »."""
+    lignes, entete, total, ventilation, type_doc = [], None, None, [], "retrocession"
+    for sous in morceaux:
+        if entete is None:
+            entete = sous.entete
+        if sous.entete.total_ht_affiche is not None:
+            total = sous.entete.total_ht_affiche
+        if sous.entete.ventilation:
+            ventilation = sous.entete.ventilation
+        if sous.type_document:
+            type_doc = sous.type_document
+        lignes.extend(sous.lignes)
+    bl_num = bl_date = None
+    for l in lignes:
+        if l.bl_numero:
+            bl_num, bl_date = l.bl_numero, l.bl_date
+        elif bl_num:
+            l.bl_numero, l.bl_date = bl_num, bl_date
+    if entete is None:
+        entete = RetroEntete()
+    entete.total_ht_affiche = total
+    entete.ventilation = ventilation
+    return RetroExtrait(type_document=type_doc, entete=entete, lignes=lignes)
+
+
+def _extraire_par_morceaux(extractor, pdf, model):
+    morceaux, cout = [], 0.0
+    for m in decouper_pdf(pdf, PAGES_PAR_LOT):
+        morceaux.append(extractor.extraire(m, model))
+        cout += getattr(extractor, "dernier_cout", 0.0)
+    extractor.dernier_cout = cout
+    return _fusionner(morceaux)
+
+
+def extraire_retro(extractor, pdf, model):
+    """Extraction retro robuste aux factures longues : un seul appel si la facture tient
+    sous le plafond de tokens, sinon découpage par paquets de pages puis fusion. Aucune
+    ligne perdue en silence : la réconciliation Σ montant_ht == Total HT affiché le vérifie."""
+    if nombre_pages(pdf) > SEUIL_PAGES_SIMPLE:
+        return _extraire_par_morceaux(extractor, pdf, model)
+    try:
+        return extractor.extraire(pdf, model)
+    except Exception as e:
+        if not _est_troncature(e):
+            raise
+        return _extraire_par_morceaux(extractor, pdf, model)
 
 
 def _reconcilier(retro, tol_min=TOLERANCE_MIN_EUR):
@@ -75,7 +143,7 @@ def _reconcilier(retro, tol_min=TOLERANCE_MIN_EUR):
 
 
 def traiter_retro(conn, pdf, extractor, config) -> ResultatRetro:
-    retro = extractor.extraire(pdf, config["model_defaut"])
+    retro = extraire_retro(extractor, pdf, config["model_defaut"])
     cout = getattr(extractor, "dernier_cout", 0.0)
 
     # Garde-fou : la somme des lignes doit réconcilier le Total HT affiché. Sinon,
@@ -83,7 +151,7 @@ def traiter_retro(conn, pdf, extractor, config) -> ResultatRetro:
     tol = config.get("tolerance_reconciliation_eur", TOLERANCE_MIN_EUR)
     ok, total_calc, motif = _reconcilier(retro, tol)
     if not ok:
-        retro = extractor.extraire(pdf, config["model_escalade"])
+        retro = extraire_retro(extractor, pdf, config["model_escalade"])
         cout += getattr(extractor, "dernier_cout", 0.0)
         ok, total_calc, motif = _reconcilier(retro, tol)
 
