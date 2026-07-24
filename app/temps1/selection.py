@@ -30,6 +30,13 @@ def qualifier_ligne(ligne: LigneFacture) -> Qualification:
     if t in ("CIP13", "EAN13"):
         return Qualification(True, str(ligne.code).strip(), t, None)
 
+    # Robustesse : si le vrai CIP/EAN a été rangé par erreur dans code_interne
+    # (le champ "code" contenant un numéro d'article interne), on le préfère.
+    ti = type_de_code(ligne.code_interne)
+    if ti in ("CIP13", "EAN13"):
+        return Qualification(True, str(ligne.code_interne).strip(), ti,
+                             "CIP/EAN repris depuis le code interne")
+
     code_brut = str(ligne.code).strip() if ligne.code else ""
     if code_brut.isdigit() and len(code_brut) == 13:
         return Qualification(False, None, "inconnu",

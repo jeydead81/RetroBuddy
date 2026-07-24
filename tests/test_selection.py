@@ -38,6 +38,22 @@ def test_code_interne_dans_le_champ_code_incluse():
     assert q.type_code == "interne"
 
 
+def test_cip_dans_code_interne_repris_comme_code():
+    # Cas Bayer : article interne dans `code`, vrai CIP/EAN dans `code_interne`
+    # -> on prend le CIP/EAN (sinon la rétro ne le retrouve pas).
+    q = qualifier_ligne(_ligne(code="82803476", code_interne="3400930000007"))
+    assert q.inclure is True
+    assert q.code_ref == "3400930000007"
+    assert q.type_code == "CIP13"
+
+
+def test_cip_dans_code_prioritaire_sur_interne():
+    # Si le CIP est bien dans `code`, un code_interne présent ne le détrône pas.
+    q = qualifier_ligne(_ligne(code="3400930000007", code_interne="82803476"))
+    assert q.code_ref == "3400930000007"
+    assert q.type_code == "CIP13"
+
+
 def test_code_13_invalide_exclue():
     q = qualifier_ligne(_ligne(code="3400930000000"))
     assert q.inclure is False

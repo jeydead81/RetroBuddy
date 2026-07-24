@@ -16,10 +16,15 @@ RÈGLES IMPÉRATIVES :
    - "autre" : grossiste ou document non identifié, sans lignes produit chiffrées.
 2. Pour chaque ligne produit, renseigner le PRIX NET tel qu'AFFICHÉ sur la facture.
    Ne JAMAIS recalculer le net à partir d'une seule remise (cas multi-remises).
-3. CODE : "code" doit être le vrai code à 13 chiffres (CIP13 préfixe 34009, ou EAN13).
-   Se fier au CONTENU du code (clé de contrôle), pas à son intitulé. Si la facture
-   porte un code interne court (non 13 chiffres), le mettre dans "code_interne" et
-   laisser "code" à null si aucun code 13 n'est présent.
+3. CODE : sur une MÊME ligne, il y a souvent DEUX codes — un numéro d'article
+   INTERNE au labo, court (ex. Bayer « 82803476 »), ET le vrai code produit à
+   13 chiffres (CIP13 préfixe 3400/34009, ou EAN13, ex. « 3401396868613 » —
+   il peut être collé à une ligne de remise ou juste en dessous de la désignation).
+   RÈGLE ABSOLUE : "code" = TOUJOURS le code à 13 chiffres dès qu'il est présent sur
+   la ligne ; ne mets JAMAIS le numéro interne dans "code". Se fier au CONTENU
+   (13 chiffres, clé de contrôle), pas à l'intitulé de colonne. Le numéro interne
+   court va dans "code_interne". SEULEMENT si aucun code 13 chiffres n'existe :
+   "code" à null et le numéro interne dans "code_interne".
 4. NE PAS extraire les récapitulatifs tarifaires (texte libre sans codes ni quantités
    livrées) : renseigner une liste de lignes vide pour ces pages.
 5. PIÈGE UG : "UG" dans une désignation (ex. "... + 1UG") est un NOM COMMERCIAL, pas
