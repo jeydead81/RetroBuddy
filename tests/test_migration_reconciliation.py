@@ -1,4 +1,5 @@
-from app.db import _soigner_reconciliations, get_connection, init_db
+from app.db import (_forcer_remises_positives, _soigner_reconciliations,
+                    get_connection, init_db)
 
 
 def _doc(conn, ok, motif, ta, tc):
@@ -33,3 +34,22 @@ def test_soin_ne_touche_pas_un_ecart_reel_meme_motif_manquant(tmp_path):
     _soigner_reconciliations(c)
     c.commit()
     assert c.execute("SELECT reconciliation_ok FROM retro_documents").fetchone()[0] == 0
+
+
+def test_force_remises_positives(tmp_path):
+    c = get_connection(tmp_path / "t.db")
+    init_db(c)
+    c.execute("INSERT INTO retro_documents (id, fichier) VALUES (1, 'r.pdf')")
+    c.execute("INSERT INTO factures (id, fichier) VALUES (1, 'f.pdf')")
+    c.execute("INSERT INTO referentiel_prix (code, date_facture, remise_pct) "
+              "VALUES ('X', '01/01/2025', -30.0)")
+    c.execute("INSERT INTO retro_lignes (retro_id, designation, qte, remise_pct) "
+              "VALUES (1, 'Y', 1, -15.0)")
+    c.execute("INSERT INTO lignes_facture (facture_id, designation, remise_pct) "
+              "VALUES (1, 'Z', 5.0)")                 # déjà positive -> inchangée
+    c.commit()
+    _forcer_remises_positives(c)
+    c.commit()
+    assert c.execute("SELECT remise_pct FROM referentiel_prix WHERE code='X'").fetchone()[0] == 30.0
+    assert c.execute("SELECT remise_pct FROM retro_lignes WHERE designation='Y'").fetchone()[0] == 15.0
+    assert c.execute("SELECT remise_pct FROM lignes_facture WHERE designation='Z'").fetchone()[0] == 5.0

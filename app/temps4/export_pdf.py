@@ -109,10 +109,9 @@ def facture_pdf(facture):
         ("ALIGN", (1, i_ht), (-1, i_ttc), "RIGHT"),
         ("LINEABOVE", (0, i_ht), (-1, i_ht), 1.2, colors.HexColor("#15803D")),
         ("FONTSIZE", (0, i_ht), (-1, i_tva), 9),
-        # Total TTC : gros, fond vert clair, texte vert foncé.
+        # Total TTC : gros + encadré, sur fond BLANC (lisible en impression noir & blanc).
         ("FONTSIZE", (0, i_ttc), (-1, i_ttc), 12),
-        ("BACKGROUND", (0, i_ttc), (-1, i_ttc), colors.HexColor("#DCFCE7")),
-        ("TEXTCOLOR", (0, i_ttc), (-1, i_ttc), colors.HexColor("#14532D")),
+        ("BOX", (0, i_ttc), (-1, i_ttc), 1, colors.black),
         ("TOPPADDING", (0, i_ttc), (-1, i_ttc), 4),
         ("BOTTOMPADDING", (0, i_ttc), (-1, i_ttc), 4),
     ]))

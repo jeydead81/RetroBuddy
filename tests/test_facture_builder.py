@@ -106,6 +106,22 @@ def test_ligne_incoherente_signalee_et_exclue(tmp_path):
     assert abs(lv.net_attendu - 4.0755) < 0.001
 
 
+def test_remise_negative_non_signalee_et_affichee_positive(tmp_path):
+    conn = _conn(tmp_path)
+    rid = _doc(conn)
+    # Labo qui stocke la remise en négatif : brut 9,2 · remise -20 · net 7,36 (=9,2×0,8) -> cohérent
+    conn.execute(
+        "INSERT INTO retro_lignes (retro_id, designation, code, qte, prix_brut, remise_pct, "
+        "prix_net, tva, bl_numero, bl_date, statut_ecart) VALUES "
+        "(?, 'A-DERMA', 'C4', 1, 9.2, -20.0, 7.36, 10.0, 'BL1', '01/08/2025', 'resolu')",
+        (rid,))
+    conn.commit()
+    f = construire_facture(conn, rid)
+    assert f.n_incoherent == 0                      # pas un faux positif
+    assert f.total_ht == 7.36                        # facturée normalement
+    assert f.groupes[0].lignes[0].remise_pct == 20.0  # affichée en positif
+
+
 def test_cascade_net_plus_bas_non_signalee(tmp_path):
     conn = _conn(tmp_path)
     rid = _doc(conn)

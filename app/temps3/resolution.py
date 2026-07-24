@@ -63,6 +63,8 @@ def enregistrer_ligne(conn, ligne_id, prix_brut=None, remise_pct=None, prix_net=
     """Sauvegarde une saisie manuelle : recalcule le net (sauf si net fourni), valide la
     ligne, verse le prix au référentiel (source résolution, ±6 mois) et résout d'un coup
     les autres lignes rouges du même produit."""
+    if remise_pct is not None:
+        remise_pct = abs(remise_pct)                  # remise toujours positive (labos en négatif)
     ligne = conn.execute(
         "SELECT qte, code, designation, bl_date, retro_id FROM retro_lignes WHERE id=?",
         (ligne_id,)).fetchone()

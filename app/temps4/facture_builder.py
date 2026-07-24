@@ -69,17 +69,19 @@ def _net_incoherent(qte, prix_brut, remise_pct, prix_net, ug):
     """Détecte un PA net incohérent avec brut/remise et retourne le net COHÉRENT attendu
     (sinon None). On ne signale QUE l'incohérence non ambiguë : net franchement AU-DESSUS
     du prix remisé (impossible : une remise/cascade ne fait que baisser le net) ou remise
-    hors [0;100]. Un net plus BAS (cascade légitime) n'est jamais signalé. Ne se prononce
-    pas si la remise est absente (cascade) ou si les données sont incomplètes."""
+    > 100 %. Un net plus BAS (cascade légitime) n'est jamais signalé. La remise est prise en
+    VALEUR ABSOLUE : certains labos la stockent en négatif (-20 pour 20 %), ce n'est pas une
+    incohérence. Ne se prononce pas si la remise est absente (cascade) ou données incomplètes."""
     if prix_brut is None or remise_pct is None or prix_net is None:
         return None
     q = qte or 0
     u = ug or 0
     if (q + u) <= 0 or prix_brut <= 0:
         return None
-    attendu = round(q * prix_brut * (1 - remise_pct / 100) / (q + u), 4)
+    remise = abs(remise_pct)
+    attendu = round(q * prix_brut * (1 - remise / 100) / (q + u), 4)
     tol = max(0.01, 0.01 * abs(attendu))
-    if remise_pct < -0.01 or remise_pct > 100.01 or prix_net > attendu + tol:
+    if remise > 100.01 or prix_net > attendu + tol:
         return attendu
     return None
 
@@ -120,11 +122,10 @@ def construire_facture(conn, retro_id):
         qte = l["qte"] or 0
         prix_net = l["prix_net"] or 0
         montant = round(qte * prix_net, 2)
-        # Remise en cascade / multi-lignes : remise_pct non renseignée mais brut+net
-        # présents -> on affiche la remise effective calculée (1 - net/brut)*100.
-        remise = l["remise_pct"]
-        if remise is None:
-            remise = _remise_effective(l["prix_brut"], l["prix_net"])
+        # Remise toujours positive (labos en négatif). En cascade / multi-lignes
+        # (remise_pct absente) -> remise effective calculée (1 - net/brut)*100.
+        remise = (abs(l["remise_pct"]) if l["remise_pct"] is not None
+                  else _remise_effective(l["prix_brut"], l["prix_net"]))
         # Garde-fou : PA net incohérent -> ligne signalée, JAMAIS facturée tant que non
         # corrigée (exclue du total, comme une ligne non rapprochée).
         net_attendu = _net_incoherent(qte, l["prix_brut"], l["remise_pct"], prix_net, l["ug"] or 0)

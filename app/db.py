@@ -155,9 +155,20 @@ def _soigner_reconciliations(conn):
         "AND ABS(total_ht_affiche - total_ht_calcule) <= 1.0")
 
 
+def _forcer_remises_positives(conn):
+    """Certains labos expriment la remise en NÉGATIF (ex. -20 pour une remise de 20 %).
+    On force toujours le positif : sinon faux positifs du garde-fou cohérence et affichage
+    trompeur. Idempotent (safe à chaque démarrage)."""
+    for table in ("referentiel_prix", "retro_lignes", "lignes_facture"):
+        if "remise_pct" in _colonnes(conn, table):
+            conn.execute(f"UPDATE {table} SET remise_pct = ABS(remise_pct) "
+                         "WHERE remise_pct IS NOT NULL AND remise_pct < 0")
+
+
 def init_db(conn):
     conn.executescript(SCHEMA)
     _migrer(conn)
     _seed_entetes(conn)
     _soigner_reconciliations(conn)
+    _forcer_remises_positives(conn)
     conn.commit()

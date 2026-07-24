@@ -224,6 +224,8 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
         code, date_facture = payload.get("code"), payload.get("date_facture")
         brut, remise, net = (payload.get("prix_brut"), payload.get("remise_pct"),
                              payload.get("prix_net"))
+        if remise not in (None, ""):
+            remise = abs(float(remise))                 # remise toujours positive
         # Cohérence : PA net recalculé depuis brut + remise s'il n'est pas forcé à la main.
         if net in (None, "") and brut not in (None, ""):
             taux = float(remise) if remise not in (None, "") else 0.0

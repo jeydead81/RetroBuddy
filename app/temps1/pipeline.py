@@ -52,8 +52,9 @@ def _persister(conn, pdf, facture, statut, motif, modele, total_calcule, qualifs
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (facture_id, l.code, type_code, l.code_interne, l.designation, l.qte,
-             l.qte_gratuite, l.prix_brut, l.remise_pct, l.prix_net, l.montant_ht, l.tva,
-             int(cok), int(q.inclure), q.note),
+             l.qte_gratuite, l.prix_brut,
+             abs(l.remise_pct) if l.remise_pct is not None else None,   # remise toujours positive
+             l.prix_net, l.montant_ht, l.tva, int(cok), int(q.inclure), q.note),
         )
     conn.commit()
     return facture_id

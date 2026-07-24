@@ -10,7 +10,7 @@ def est_ligne_prix(ligne: LigneFacture) -> bool:
     """
     if ligne.prix_brut is None or ligne.prix_brut <= 0:
         return False
-    if ligne.remise_pct is not None and ligne.remise_pct >= 100:
+    if ligne.remise_pct is not None and abs(ligne.remise_pct) >= 100:   # remise en négatif chez certains labos
         return False
     if ligne.prix_net is None or ligne.prix_net <= 0:
         return False

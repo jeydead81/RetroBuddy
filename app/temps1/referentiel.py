@@ -23,7 +23,8 @@ def enregistrer_referentiel(conn, facture_id, date_facture, labo, entrees):
               source='facture',
               modifie_manuellement=0
             """,
-            (code_ref, date_facture, type_code, labo,
-             l.prix_brut, l.remise_pct, l.prix_net, l.designation, facture_id),
+            (code_ref, date_facture, type_code, labo, l.prix_brut,
+             abs(l.remise_pct) if l.remise_pct is not None else None,   # remise toujours positive
+             l.prix_net, l.designation, facture_id),
         )
     conn.commit()
