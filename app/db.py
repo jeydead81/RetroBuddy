@@ -140,8 +140,24 @@ def _seed_entetes(conn):
                      "VALUES (?, ?)", (emettrice, mentions))
 
 
+def _soigner_reconciliations(conn):
+    """Répare les factures rétro flaggées à tort par l'ANCIEN contrôle ligne
+    (« qté ou prix net manquant »), désormais supprimé : le contrôle actuel ignore
+    une ligne sans qté/net (son montant est déjà couvert par le total). On revalide
+    UNIQUEMENT ce motif obsolète ET si le Total HT réconcilie (écart < 1 €) — jamais
+    un vrai écart de total ni un motif TVA/ligne actuel. Idempotent (safe à chaque démarrage)."""
+    if "reconciliation_ok" not in _colonnes(conn, "retro_documents"):
+        return
+    conn.execute(
+        "UPDATE retro_documents SET reconciliation_ok = 1, motif_reconciliation = NULL "
+        "WHERE reconciliation_ok = 0 AND motif_reconciliation LIKE '%manquant%' "
+        "AND total_ht_affiche IS NOT NULL AND total_ht_calcule IS NOT NULL "
+        "AND ABS(total_ht_affiche - total_ht_calcule) <= 1.0")
+
+
 def init_db(conn):
     conn.executescript(SCHEMA)
     _migrer(conn)
     _seed_entetes(conn)
+    _soigner_reconciliations(conn)
     conn.commit()
