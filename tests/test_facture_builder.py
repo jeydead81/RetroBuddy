@@ -81,3 +81,42 @@ def test_non_bloquee_si_tout_resolu(tmp_path):
 
 def test_retro_id_inconnu_renvoie_none(tmp_path):
     assert construire_facture(_conn(tmp_path), 999) is None
+
+
+def test_ligne_incoherente_signalee_et_exclue(tmp_path):
+    conn = _conn(tmp_path)
+    rid = _doc(conn)
+    _ligne(conn, rid, "A", 2, 5.0, 10.0, "BL1", "01/08/2025")           # cohérente
+    # Type Lysopaine : brut 7,41 · remise 45 % · mais net 489,06 (>> brut) -> incohérent
+    conn.execute(
+        "INSERT INTO retro_lignes (retro_id, designation, code, qte, prix_brut, remise_pct, "
+        "prix_net, tva, bl_numero, bl_date, statut_ecart) VALUES "
+        "(?, 'LYSOPAINE', 'C2', 25, 7.41, 45.0, 489.06, 10.0, 'BL1', '01/08/2025', 'resolu')",
+        (rid,))
+    conn.commit()
+    f = construire_facture(conn, rid)
+    assert f.n_incoherent == 1
+    assert f.bloquee is True
+    # exclue des groupes ET du total (jamais facturée en douce)
+    assert [l.designation for g in f.groupes for l in g.lignes] == ["A"]
+    assert f.total_ht == 10.0
+    # signalée, avec le net cohérent proposé (25*7,41*0,55/25 = 4,0755)
+    lv = f.lignes_a_verifier[0]
+    assert lv.designation == "LYSOPAINE" and lv.incoherente is True
+    assert abs(lv.net_attendu - 4.0755) < 0.001
+
+
+def test_cascade_net_plus_bas_non_signalee(tmp_path):
+    conn = _conn(tmp_path)
+    rid = _doc(conn)
+    # brut 10 · remise 10 % -> prix remisé 9, mais net 7 (cascade légitime, plus bas) -> OK
+    conn.execute(
+        "INSERT INTO retro_lignes (retro_id, designation, code, qte, prix_brut, remise_pct, "
+        "prix_net, tva, bl_numero, bl_date, statut_ecart) VALUES "
+        "(?, 'CASCADE', 'C3', 1, 10.0, 10.0, 7.0, 10.0, 'BL1', '01/08/2025', 'resolu')",
+        (rid,))
+    conn.commit()
+    f = construire_facture(conn, rid)
+    assert f.n_incoherent == 0
+    assert f.bloquee is False
+    assert f.total_ht == 7.0

@@ -20,6 +20,10 @@
 {% if f.n_rouge %}
   <p class="en_revue"><strong>{{ f.n_rouge }} ligne(s) à compléter avant de pouvoir générer la facture.</strong></p>
 {% endif %}
+{% if f.n_incoherent %}
+  <p class="erreur"><strong>⚠ {{ f.n_incoherent }} ligne(s) au prix incohérent</strong> — le PA net ne correspond pas au brut/remise.
+     Elles sont <strong>exclues du total</strong> tant qu'elles ne sont pas corrigées (voir « À vérifier » ci-dessous).</p>
+{% endif %}
 
 <p>
   <button onclick="recalculer()">↻ Recalculer les prix depuis le référentiel</button>
@@ -52,6 +56,29 @@
 <p style="color:var(--grey); font-size:.88rem;">💡 Les prix (PA brut, Remise %, PA net) sont modifiables directement ci-dessous —
    modifiez puis <strong>Enregistrer</strong> (une correction ici est conservée, non écrasée par le recalcul).</p>
 
+{% if f.lignes_a_verifier %}
+  <h3 style="color:#991B1B;">⚠ Lignes à vérifier — prix incohérent (non facturées)</h3>
+  <p style="color:var(--grey); font-size:.88rem;">Le PA net ne colle pas au brut/remise (probable saisie erronée).
+     Corrige la valeur — le <strong>net cohérent</strong> est proposé en un clic — puis <strong>Enregistrer</strong> :
+     la ligne rejoint alors le total.</p>
+  <table>
+    <tr><th>Désignation</th><th>BL</th><th>Qté</th><th>PA brut</th><th>Remise %</th>
+        <th>PA net</th><th>Net cohérent</th><th>Montant actuel</th><th></th></tr>
+    {% for l in f.lignes_a_verifier %}
+      <tr data-id="{{ l.id }}" data-ug="{{ l.ug }}" style="background:#FEF2F2;">
+        <td>{{ l.designation }}</td>
+        <td>{{ l.bl_numero or "" }}<br><small style="color:var(--grey);">{{ l.bl_date or "" }}</small></td>
+        <td class="q">{{ l.qte | qte }}</td>
+        <td><input class="f-brut" type="number" step="0.001" style="width:6rem;" value="{{ l.prix_brut if l.prix_brut is not none else '' }}"></td>
+        <td><input class="f-remise" type="number" step="0.01" style="width:5rem;" value="{{ l.remise_pct if l.remise_pct is not none else '' }}"></td>
+        <td><input class="f-net" type="number" step="0.001" style="width:6rem;" value="{{ l.prix_net if l.prix_net is not none else '' }}"></td>
+        <td><button type="button" onclick="proposer(this, {{ l.net_attendu }})">≈ {{ l.net_attendu }} €</button></td>
+        <td style="color:#991B1B; font-weight:600;">{{ l.montant_ht }}</td>
+        <td><button onclick="majLigne(this)">Enregistrer</button></td></tr>
+    {% endfor %}
+  </table>
+{% endif %}
+
 {% for g in f.groupes %}
   <h3>Bon livraison {{ g.bl_numero or "" }} du {{ g.bl_date or "" }}</h3>
   <table>
@@ -70,15 +97,30 @@
   </table>
 {% endfor %}
 
-<h3>Ventilation TVA</h3>
-<table>
-  <tr><th>Taux TVA</th><th>Base HT</th><th>Montant TVA</th></tr>
-  {% for v in f.ventilation %}
-    <tr><td>{{ v.taux }}</td><td>{{ v.base_ht }}</td><td>{{ v.montant_tva }}</td></tr>
-  {% endfor %}
+<h3>Ventilation TVA &amp; totaux</h3>
+<table style="max-width:34rem;">
+  <thead>
+    <tr><th>Taux TVA</th><th style="text-align:right;">Base HT</th><th style="text-align:right;">Montant TVA</th></tr>
+  </thead>
+  <tbody>
+    {% for v in f.ventilation %}
+      <tr><td>{{ v.taux }}</td><td style="text-align:right;">{{ v.base_ht }} €</td>
+          <td style="text-align:right;">{{ v.montant_tva }} €</td></tr>
+    {% endfor %}
+    <tr style="border-top:2px solid var(--primary);">
+      <td style="font-weight:600;">Total HT</td>
+      <td colspan="2" style="text-align:right; font-weight:600; font-size:1.05rem;">{{ f.total_ht }} €</td>
+    </tr>
+    <tr>
+      <td style="font-weight:600;">Total TVA</td>
+      <td colspan="2" style="text-align:right; font-weight:600; font-size:1.05rem;">{{ f.total_tva }} €</td>
+    </tr>
+    <tr style="background:var(--muted);">
+      <td style="font-weight:700; font-size:1.15rem; color:var(--primary-d); padding-top:.6rem; padding-bottom:.6rem;">Total TTC</td>
+      <td colspan="2" style="text-align:right; font-weight:800; font-size:1.6rem; color:var(--primary-d); padding-top:.6rem; padding-bottom:.6rem;">{{ f.total_ttc }} €</td>
+    </tr>
+  </tbody>
 </table>
-<p>Total HT : {{ f.total_ht }} · Total TVA : {{ f.total_tva }} ·
-   <strong>Total TTC : {{ f.total_ttc }}</strong></p>
 
 <script>
 async function recalculer() {
@@ -93,15 +135,28 @@ async function recontroler() {
 
 function valLigne(tr, cls) { const v = tr.querySelector(cls).value; return v === "" ? null : parseFloat(v); }
 
-// Recalcul auto du PA net quand PA brut ou remise change.
+// Ligne à vérifier : pré-remplit le PA net cohérent proposé (et recalcule la remise).
+function proposer(btn, net) {
+  const inp = btn.closest("tr").querySelector(".f-net");
+  inp.value = net;
+  inp.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+// PA brut / remise modifiés -> recalcul du PA net ; PA net modifié -> recalcul de la remise.
 document.querySelectorAll("tr[data-id]").forEach(tr => {
   tr.addEventListener("change", e => {
-    if (!e.target.matches(".f-brut, .f-remise")) return;
     const qte = parseFloat(tr.querySelector(".q").textContent) || 0;
     const ug = parseFloat(tr.dataset.ug) || 0;
-    const brut = valLigne(tr, ".f-brut"), remise = valLigne(tr, ".f-remise") || 0;
-    if (brut != null && (qte + ug) > 0)
-      tr.querySelector(".f-net").value = (qte * brut * (1 - remise / 100) / (qte + ug)).toFixed(4);
+    const brut = valLigne(tr, ".f-brut");
+    if (e.target.matches(".f-brut, .f-remise")) {
+      const remise = valLigne(tr, ".f-remise") || 0;
+      if (brut != null && (qte + ug) > 0)
+        tr.querySelector(".f-net").value = (qte * brut * (1 - remise / 100) / (qte + ug)).toFixed(4);
+    } else if (e.target.matches(".f-net")) {
+      const net = valLigne(tr, ".f-net");
+      if (brut && net != null && qte > 0)
+        tr.querySelector(".f-remise").value = ((1 - net * (qte + ug) / (qte * brut)) * 100).toFixed(2);
+    }
   });
 });
 

@@ -42,10 +42,11 @@ def facture_pdf(facture):
     entete_info += (f"Destinataire : <b>{facture.destinataire or ''}</b>"
                     f" · Date : {facture.date_vente or ''}")
     el.append(Paragraph(entete_info, _ST_INFO))
-    if getattr(facture, "n_rouge", 0):
+    exclues = getattr(facture, "n_rouge", 0) + getattr(facture, "n_incoherent", 0)
+    if exclues:
         el.append(Paragraph(
-            f"<b>FACTURE PARTIELLE</b> — {facture.n_rouge} ligne(s) non rapprochée(s) "
-            "exclue(s) du total.", _ST_INFO))
+            f"<b>FACTURE PARTIELLE</b> — {exclues} ligne(s) exclue(s) du total "
+            "(non rapprochée(s) ou prix incohérent).", _ST_INFO))
     el.append(Spacer(1, 2.5 * mm))
 
     # Table unique : 1 rangée d'en-tête (répétée à chaque page), puis pour chaque BL
