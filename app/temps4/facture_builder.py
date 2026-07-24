@@ -50,6 +50,15 @@ class Facture:
     mentions_emettrice: str | None = None   # en-tête légal de la pharmacie émettrice
 
 
+def _remise_effective(prix_brut, prix_net):
+    """Remise % déduite du brut et du net (cascade / multi-remises non affichées).
+
+    Retourne None si non calculable (brut nul/absent ou net absent)."""
+    if prix_brut and prix_net is not None and prix_brut > 0:
+        return round((1 - prix_net / prix_brut) * 100, 2)
+    return None
+
+
 def construire_facture(conn, retro_id):
     doc = conn.execute(
         "SELECT pharmacie_emettrice, pharmacie_destinataire, numero, date_vente, "
@@ -88,8 +97,13 @@ def construire_facture(conn, retro_id):
         total_ht = round(total_ht + montant, 2)
         taux = l["tva"] if l["tva"] is not None else 0.0
         bases[taux] = round(bases.get(taux, 0.0) + montant, 2)
+        # Remise en cascade / multi-lignes : remise_pct non renseignée mais brut+net
+        # présents -> on affiche la remise effective calculée (1 - net/brut)*100.
+        remise = l["remise_pct"]
+        if remise is None:
+            remise = _remise_effective(l["prix_brut"], l["prix_net"])
         lf = LigneFacturee(l["designation"], l["code"], qte, l["prix_brut"],
-                           l["remise_pct"], prix_net, l["tva"], montant,
+                           remise, prix_net, l["tva"], montant,
                            id=l["id"], ug=l["ug"] or 0)
         cle = (l["bl_numero"], l["bl_date"])
         if courant is None or (courant.bl_numero, courant.bl_date) != cle:
