@@ -1,3 +1,4 @@
+from app.codes.checksum import normaliser_code
 from app.codes.correspondance import resoudre_via_correspondance
 from app.temps2.normalisation_designation import normaliser_designation, score_designation
 
@@ -15,6 +16,7 @@ def resoudre_code(conn, code):
 
     Retourne (code_resolu, passe) ou (None, None).
     """
+    code = normaliser_code(code) or code   # GTIN-14 à zéro de tête -> EAN13
     if _code_au_referentiel(conn, code):
         return (code, 1)
     autre = resoudre_via_correspondance(conn, code)

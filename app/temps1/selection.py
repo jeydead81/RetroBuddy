@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from app.codes.checksum import type_de_code
+from app.codes.checksum import normaliser_code, type_de_code
 from app.temps1 import filtres
 from app.temps1.schemas import LigneFacture
 
@@ -28,13 +28,13 @@ def qualifier_ligne(ligne: LigneFacture) -> Qualification:
 
     t = type_de_code(ligne.code)
     if t in ("CIP13", "EAN13"):
-        return Qualification(True, str(ligne.code).strip(), t, None)
+        return Qualification(True, normaliser_code(ligne.code), t, None)
 
     # Robustesse : si le vrai CIP/EAN a été rangé par erreur dans code_interne
     # (le champ "code" contenant un numéro d'article interne), on le préfère.
     ti = type_de_code(ligne.code_interne)
     if ti in ("CIP13", "EAN13"):
-        return Qualification(True, str(ligne.code_interne).strip(), ti,
+        return Qualification(True, normaliser_code(ligne.code_interne), ti,
                              "CIP/EAN repris depuis le code interne")
 
     code_brut = str(ligne.code).strip() if ligne.code else ""

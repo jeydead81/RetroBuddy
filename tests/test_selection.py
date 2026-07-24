@@ -47,6 +47,15 @@ def test_cip_dans_code_interne_repris_comme_code():
     assert q.type_code == "CIP13"
 
 
+def test_gtin14_zero_de_tete_normalise_en_ean13():
+    # Cas Bayer réel : le modèle sort le CIP dans `code` mais en 14 chiffres
+    # (0 + EAN13). Il faut le stocker en 13 chiffres pour matcher la rétro.
+    q = qualifier_ligne(_ligne(code="03401396868613", code_interne="82803476"))
+    assert q.inclure is True
+    assert q.code_ref == "3401396868613"
+    assert q.type_code == "EAN13"
+
+
 def test_cip_dans_code_prioritaire_sur_interne():
     # Si le CIP est bien dans `code`, un code_interne présent ne le détrône pas.
     q = qualifier_ligne(_ligne(code="3400930000007", code_interne="82803476"))

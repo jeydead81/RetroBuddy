@@ -1,4 +1,4 @@
-from app.codes.checksum import cip13_valide, ean13_valide, type_de_code
+from app.codes.checksum import cip13_valide, ean13_valide, normaliser_code, type_de_code
 
 
 def test_cip13_valide():
@@ -25,3 +25,12 @@ def test_type_de_code():
     assert type_de_code("107621") == "interne"      # code interne court (Fresenius)
     assert type_de_code("3400930000000") == "inconnu"  # 13 chiffres, clé KO
     assert type_de_code(None) == "inconnu"
+
+
+def test_gtin14_zero_de_tete_est_un_ean13():
+    # Facture Bayer : code sorti avec le 0 de tête (GTIN-14) -> EAN13 réel.
+    assert type_de_code("03401396868613") == "EAN13"
+    assert normaliser_code("03401396868613") == "3401396868613"
+    assert normaliser_code(" 3400930000007 ") == "3400930000007"   # espaces retirés
+    assert normaliser_code("82803476") == "82803476"               # interne inchangé
+    assert normaliser_code(None) == ""
