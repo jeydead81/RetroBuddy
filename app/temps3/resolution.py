@@ -1,3 +1,7 @@
+from app.codes.checksum import normaliser_code, type_de_code
+from app.temps2.calcul_prix import prix_a_date
+
+
 def calcul_net(qte, prix_brut, remise_pct, ug=0):
     """PA net unitaire (cadrage §3.3) : qte*brut*(1-remise/100)/(qte+ug)."""
     qte = qte or 0
@@ -13,9 +17,49 @@ def _qte(conn, ligne_id):
     return r["qte"] if r else 0
 
 
+def _alimenter_referentiel(conn, code, date_facture, designation, prix_brut, remise_pct, prix_net):
+    """Verse un prix saisi en résolution au référentiel (source='resolution').
+
+    N'écrase JAMAIS un prix de vraie facture labo au même (code, date)."""
+    ex = conn.execute("SELECT COALESCE(source,'facture') s FROM referentiel_prix "
+                      "WHERE code=? AND date_facture=?", (code, date_facture)).fetchone()
+    if ex and ex["s"] == "facture":
+        return
+    conn.execute(
+        "INSERT INTO referentiel_prix (code, date_facture, type_code, prix_brut, remise_pct, "
+        "prix_net, designation, source) VALUES (?, ?, ?, ?, ?, ?, ?, 'resolution') "
+        "ON CONFLICT(code, date_facture) DO UPDATE SET prix_brut=excluded.prix_brut, "
+        "remise_pct=excluded.remise_pct, prix_net=excluded.prix_net, "
+        "designation=excluded.designation, source='resolution'",
+        (code, date_facture, type_de_code(code), prix_brut, remise_pct, prix_net, designation))
+
+
+def _propager(conn, code, exclure_id):
+    """Résout immédiatement les autres lignes ROUGES du même code que le prix
+    tout juste saisi couvre (via prix_a_date : fenêtre ±6 mois). Retourne le nb résolu."""
+    n = 0
+    for l in conn.execute(
+            "SELECT id, code, bl_date FROM retro_lignes WHERE statut_ecart='rouge' "
+            "AND valide_utilisateur=0 AND saisie_manuelle=0 AND id != ?", (exclure_id,)):
+        if normaliser_code(l["code"]) != code:
+            continue
+        prix = prix_a_date(conn, code, l["bl_date"])
+        if prix is not None and (prix["prix_net"] or 0) > 0:
+            conn.execute(
+                "UPDATE retro_lignes SET code_resolu=?, prix_brut=?, remise_pct=?, prix_net=?, "
+                "statut_ecart='resolu', passe_match=1 WHERE id=?",
+                (code, prix["prix_brut"], prix["remise_pct"], prix["prix_net"], l["id"]))
+            n += 1
+    return n
+
+
 def enregistrer_ligne(conn, ligne_id, prix_brut=None, remise_pct=None, prix_net=None, ug=0):
-    """Sauvegarde une saisie manuelle : recalcule le net (sauf si net fourni), valide la ligne."""
-    qte = _qte(conn, ligne_id)
+    """Sauvegarde une saisie manuelle : recalcule le net (sauf si net fourni), valide la
+    ligne, verse le prix au référentiel (source résolution, ±6 mois) et résout d'un coup
+    les autres lignes rouges du même produit."""
+    ligne = conn.execute(
+        "SELECT qte, code, designation, bl_date FROM retro_lignes WHERE id=?", (ligne_id,)).fetchone()
+    qte = ligne["qte"] if ligne else 0
     net = prix_net if prix_net is not None else calcul_net(qte, prix_brut, remise_pct, ug)
     valide = 1 if (net is not None and net > 0) else 0
     statut = "resolu" if valide else "rouge"
@@ -23,8 +67,17 @@ def enregistrer_ligne(conn, ligne_id, prix_brut=None, remise_pct=None, prix_net=
         "UPDATE retro_lignes SET prix_brut=?, remise_pct=?, prix_net=?, ug=?, "
         "saisie_manuelle=1, valide_utilisateur=?, statut_ecart=? WHERE id=?",
         (prix_brut, remise_pct, net, ug, valide, statut, ligne_id))
+
+    propagees = 0
+    if valide and ligne and ligne["code"]:
+        code = normaliser_code(ligne["code"])
+        if code:
+            _alimenter_referentiel(conn, code, ligne["bl_date"], ligne["designation"],
+                                   prix_brut, remise_pct, net)
+            propagees = _propager(conn, code, ligne_id)
     conn.commit()
-    return {"id": ligne_id, "prix_net": net, "statut_ecart": statut, "valide_utilisateur": valide}
+    return {"id": ligne_id, "prix_net": net, "statut_ecart": statut,
+            "valide_utilisateur": valide, "propagees": propagees}
 
 
 def accepter_orange(conn, ligne_id):

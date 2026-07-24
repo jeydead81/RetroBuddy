@@ -10,8 +10,8 @@ def enregistrer_referentiel(conn, facture_id, date_facture, labo, entrees):
             """
             INSERT INTO referentiel_prix
               (code, date_facture, type_code, labo,
-               prix_brut, remise_pct, prix_net, designation, facture_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+               prix_brut, remise_pct, prix_net, designation, facture_id, source)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'facture')
             ON CONFLICT(code, date_facture) DO UPDATE SET
               type_code=excluded.type_code,
               labo=excluded.labo,
@@ -20,6 +20,7 @@ def enregistrer_referentiel(conn, facture_id, date_facture, labo, entrees):
               prix_net=excluded.prix_net,
               designation=excluded.designation,
               facture_id=excluded.facture_id,
+              source='facture',
               modifie_manuellement=0
             """,
             (code_ref, date_facture, type_code, labo,

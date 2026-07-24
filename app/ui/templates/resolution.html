@@ -85,6 +85,8 @@ async function enregistrer(id) {
   const r = await fetch(`/resolution/ligne/${id}`,
     { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
   const d = await r.json();
+  // Une saisie peut résoudre d'autres lignes du même produit (±6 mois) : on recharge.
+  if (d.propagees && d.propagees > 0) { location.reload(); return; }
   tr.querySelector(".f-net").value = d.prix_net != null ? d.prix_net : "";
   const [txt, cls] = LBL[d.statut_ecart] || [d.statut_ecart, "b-info"];
   tr.querySelector(".statut").innerHTML =

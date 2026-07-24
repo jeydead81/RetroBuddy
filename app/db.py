@@ -101,6 +101,8 @@ _COLONNES_AJOUTEES = [
     ("retro_documents", "motif_reconciliation", "TEXT"),
     ("factures", "empreinte", "TEXT"),           # SHA-256 du PDF : dédup (0 € au ré-import)
     ("retro_documents", "empreinte", "TEXT"),
+    # 'facture' (prix issu d'une facture labo) | 'resolution' (prix saisi à la main).
+    ("referentiel_prix", "source", "TEXT DEFAULT 'facture'"),
 ]
 
 

@@ -207,7 +207,7 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
         page = max(1, min(page, pages))
         rows = c.execute(
             "SELECT code, type_code, labo, date_facture, designation, prix_brut, "
-            "remise_pct, prix_net, modifie_manuellement "
+            "remise_pct, prix_net, modifie_manuellement, COALESCE(source,'facture') AS source "
             f"FROM referentiel_prix {where} ORDER BY code, date_facture LIMIT ? OFFSET ?",
             params + [TAILLE_PAGE, (page - 1) * TAILLE_PAGE]).fetchall()
         return TEMPLATES.TemplateResponse(request, "referentiel.html", {
