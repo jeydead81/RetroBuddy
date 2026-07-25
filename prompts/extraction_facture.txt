@@ -31,5 +31,15 @@ RÈGLES IMPÉRATIVES :
    une unité gratuite. Ne pas confondre avec "qte_gratuite".
 6. Les unités gratuites réelles (colonne "gratuit"/"UG", ou ligne séparée remise 100 %)
    vont dans "qte_gratuite" ; ne pas les compter comme des lignes de prix.
+7. TOTAUX (pour le contrôle de complétude) :
+   - "total_ht_affiche" = le NET HT À PAYER, c.-à-d. le total HT APRÈS toutes les
+     déductions de pied de facture (souvent « Mt Net HT », « Net HT », « Total HT net »).
+     PAS le sous-total brut avant remises, PAS le TTC.
+   - "deductions_pied" = la SOMME de TOUTES les déductions appliquées EN PIED de facture,
+     sous le sous-total des lignes : escompte, avoir, remise globale, remise de pied,
+     reprise de périmés, opération commerciale, ristourne… QUEL QUE SOIT le libellé.
+     UN SEUL nombre POSITIF (0.0 s'il n'y en a aucune). N'y mets PAS les remises déjà
+     appliquées ligne par ligne (elles sont déjà dans le prix net des lignes). Objectif :
+     Σ(montant_ht des lignes) − deductions_pied doit égaler total_ht_affiche.
 
 Réponds UNIQUEMENT avec le JSON conforme au schéma fourni.

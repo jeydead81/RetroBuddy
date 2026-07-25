@@ -20,7 +20,11 @@ class EnteteFacture(BaseModel):
     labo: str | None = None
     numero_facture: str | None = None
     date_facture: str | None = None
-    total_ht_affiche: float | None = None
+    total_ht_affiche: float | None = None      # Net HT à payer (APRÈS déductions de pied)
+    # Somme de TOUTES les déductions de pied de facture (escompte, avoir, remise globale,
+    # reprise de périmés, opération commerciale…), quel que soit le libellé. Un seul nombre
+    # positif. Sert à réconcilier : Σ montant_ht lignes − deductions_pied == total_ht_affiche.
+    deductions_pied: float = 0.0
 
 
 class FactureExtraite(BaseModel):

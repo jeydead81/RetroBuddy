@@ -13,8 +13,9 @@ class LigneFacturee:
     montant_ht: float
     id: int | None = None     # id de la retro_ligne (édition inline sur la facture)
     ug: float = 0
-    incoherente: bool = False        # PA net incohérent avec brut/remise -> à vérifier
+    incoherente: bool = False        # à vérifier (exclue du total, bloque la facture)
     net_attendu: float | None = None  # net cohérent proposé (brut×(1-remise), UG inclus)
+    motif_verif: str | None = None    # « prix incohérent » | « remise à 0 »
     bl_numero: str | None = None
     bl_date: str | None = None
 
@@ -52,7 +53,7 @@ class Facture:
     total_ht_calcule: float | None = None
     motif_reconciliation: str | None = None
     mentions_emettrice: str | None = None   # en-tête légal de la pharmacie émettrice
-    n_incoherent: int = 0                    # lignes au prix incohérent (exclues du total)
+    n_a_verifier: int = 0                    # lignes à vérifier (exclues du total, bloquantes)
     lignes_a_verifier: list = field(default_factory=list)
 
 
@@ -107,7 +108,8 @@ def construire_facture(conn, retro_id):
 
     lignes = conn.execute(
         "SELECT id, designation, code, qte, prix_brut, remise_pct, prix_net, tva, ug, "
-        "bl_numero, bl_date, statut_ecart FROM retro_lignes WHERE retro_id = ? ORDER BY id",
+        "bl_numero, bl_date, statut_ecart, saisie_manuelle, valide_utilisateur "
+        "FROM retro_lignes WHERE retro_id = ? ORDER BY id",
         (retro_id,)).fetchall()
     n_rouge = sum(1 for l in lignes if l["statut_ecart"] == "rouge")
 
@@ -126,14 +128,19 @@ def construire_facture(conn, retro_id):
         # (remise_pct absente) -> remise effective calculée (1 - net/brut)*100.
         remise = (abs(l["remise_pct"]) if l["remise_pct"] is not None
                   else _remise_effective(l["prix_brut"], l["prix_net"]))
+        valide_main = l["saisie_manuelle"] or l["valide_utilisateur"]
         # Garde-fou : PA net incohérent -> ligne signalée, JAMAIS facturée tant que non
         # corrigée (exclue du total, comme une ligne non rapprochée).
         net_attendu = _net_incoherent(qte, l["prix_brut"], l["remise_pct"], prix_net, l["ug"] or 0)
-        if net_attendu is not None:
+        # Remise à 0 non revue : sur certaines factures la remise est illisible et ressort
+        # à 0 -> on bloque tant que l'utilisateur ne l'a pas vérifiée (décision Baptiste).
+        remise_zero = (l["remise_pct"] == 0) and not valide_main
+        if net_attendu is not None or remise_zero:
             a_verifier.append(LigneFacturee(
                 l["designation"], l["code"], qte, l["prix_brut"], remise, prix_net,
                 l["tva"], montant, id=l["id"], ug=l["ug"] or 0,
                 incoherente=True, net_attendu=net_attendu,
+                motif_verif=("prix incohérent" if net_attendu is not None else "remise à 0"),
                 bl_numero=l["bl_numero"], bl_date=l["bl_date"]))
             continue
         total_ht = round(total_ht + montant, 2)
@@ -147,7 +154,7 @@ def construire_facture(conn, retro_id):
             courant = GroupeBL(l["bl_numero"], l["bl_date"], [])
             groupes.append(courant)
         courant.lignes.append(lf)
-    n_incoherent = len(a_verifier)
+    n_a_verifier = len(a_verifier)
 
     ventilation = []
     total_tva = 0.0
@@ -160,10 +167,10 @@ def construire_facture(conn, retro_id):
     return Facture(retro_id, doc["pharmacie_emettrice"], doc["pharmacie_destinataire"],
                    doc["numero"], doc["date_vente"], groupes, ventilation,
                    total_ht, total_tva, total_ttc,
-                   bloquee=(n_rouge > 0 or n_incoherent > 0 or not reco_ok), n_rouge=n_rouge,
+                   bloquee=(n_rouge > 0 or n_a_verifier > 0 or not reco_ok), n_rouge=n_rouge,
                    reconciliation_ok=reco_ok,
                    total_ht_affiche=doc["total_ht_affiche"],
                    total_ht_calcule=doc["total_ht_calcule"],
                    motif_reconciliation=doc["motif_reconciliation"],
                    mentions_emettrice=mentions,
-                   n_incoherent=n_incoherent, lignes_a_verifier=a_verifier)
+                   n_a_verifier=n_a_verifier, lignes_a_verifier=a_verifier)

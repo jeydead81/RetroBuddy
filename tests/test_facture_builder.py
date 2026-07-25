@@ -95,7 +95,7 @@ def test_ligne_incoherente_signalee_et_exclue(tmp_path):
         (rid,))
     conn.commit()
     f = construire_facture(conn, rid)
-    assert f.n_incoherent == 1
+    assert f.n_a_verifier == 1
     assert f.bloquee is True
     # exclue des groupes ET du total (jamais facturée en douce)
     assert [l.designation for g in f.groupes for l in g.lignes] == ["A"]
@@ -117,9 +117,40 @@ def test_remise_negative_non_signalee_et_affichee_positive(tmp_path):
         (rid,))
     conn.commit()
     f = construire_facture(conn, rid)
-    assert f.n_incoherent == 0                      # pas un faux positif
+    assert f.n_a_verifier == 0                      # pas un faux positif
     assert f.total_ht == 7.36                        # facturée normalement
     assert f.groupes[0].lignes[0].remise_pct == 20.0  # affichée en positif
+
+
+def test_remise_zero_bloque_et_flag(tmp_path):
+    conn = _conn(tmp_path)
+    rid = _doc(conn)
+    # remise à 0 (illisible sur la facture labo) -> à vérifier, bloque, motif dédié.
+    conn.execute(
+        "INSERT INTO retro_lignes (retro_id, designation, code, qte, prix_brut, remise_pct, "
+        "prix_net, tva, bl_numero, bl_date, statut_ecart) VALUES "
+        "(?, 'REMISE0', 'C5', 2, 8.0, 0.0, 6.0, 10.0, 'BL1', '01/08/2025', 'resolu')",
+        (rid,))
+    conn.commit()
+    f = construire_facture(conn, rid)
+    assert f.n_a_verifier == 1 and f.bloquee is True
+    assert f.total_ht == 0.0                                   # exclue tant que non vérifiée
+    assert f.lignes_a_verifier[0].motif_verif == "remise à 0"
+
+
+def test_remise_zero_validee_a_la_main_non_flaggee(tmp_path):
+    conn = _conn(tmp_path)
+    rid = _doc(conn)
+    # remise 0 mais confirmée à la main (saisie_manuelle=1) -> plus flaggée, facturée.
+    conn.execute(
+        "INSERT INTO retro_lignes (retro_id, designation, code, qte, prix_brut, remise_pct, "
+        "prix_net, tva, bl_numero, bl_date, statut_ecart, saisie_manuelle) VALUES "
+        "(?, 'OK0', 'C6', 2, 8.0, 0.0, 8.0, 10.0, 'BL1', '01/08/2025', 'resolu', 1)",
+        (rid,))
+    conn.commit()
+    f = construire_facture(conn, rid)
+    assert f.n_a_verifier == 0 and f.bloquee is False
+    assert f.total_ht == 16.0
 
 
 def test_cascade_net_plus_bas_non_signalee(tmp_path):
@@ -133,6 +164,6 @@ def test_cascade_net_plus_bas_non_signalee(tmp_path):
         (rid,))
     conn.commit()
     f = construire_facture(conn, rid)
-    assert f.n_incoherent == 0
+    assert f.n_a_verifier == 0
     assert f.bloquee is False
     assert f.total_ht == 7.0

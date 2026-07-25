@@ -42,7 +42,7 @@ def facture_pdf(facture):
     entete_info += (f"Destinataire : <b>{facture.destinataire or ''}</b>"
                     f" · Date : {facture.date_vente or ''}")
     el.append(Paragraph(entete_info, _ST_INFO))
-    exclues = getattr(facture, "n_rouge", 0) + getattr(facture, "n_incoherent", 0)
+    exclues = getattr(facture, "n_rouge", 0) + getattr(facture, "n_a_verifier", 0)
     if exclues:
         el.append(Paragraph(
             f"<b>FACTURE PARTIELLE</b> — {exclues} ligne(s) exclue(s) du total "

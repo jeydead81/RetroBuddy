@@ -33,3 +33,17 @@ def test_reconciliation_total_absent():
     lignes = [_ligne("3400930000007", 10.0)]
     ok, total = reconcilier_totaux(lignes, total_affiche=None, seuil_pct=1.0)
     assert ok is False
+
+
+def test_reconciliation_avec_deductions_pied():
+    # Cas Alloga : Σ lignes 551,04 ; net à payer 545,53 ; escompte 5,51 en pied.
+    lignes = [_ligne("3400930000007", 545.53), _ligne("4006381333931", 5.51)]
+    ok, total = reconcilier_totaux(lignes, total_affiche=545.53, deductions_pied=5.51)
+    assert ok is True and total == 551.04
+
+
+def test_reconciliation_ligne_oubliee_malgre_deductions():
+    # Une ligne oubliée ne doit PAS être masquée par les déductions de pied.
+    lignes = [_ligne("3400930000007", 500.0)]                 # une ligne manque
+    ok, _ = reconcilier_totaux(lignes, total_affiche=545.53, deductions_pied=5.51)
+    assert ok is False

@@ -90,7 +90,7 @@ def traiter_facture(conn, pdf, extractor, config) -> Resultat:
         return Resultat("ignoree", motif, fid, None, 0, cout)
 
     ok, total = garde_fous.reconcilier_totaux(
-        facture.lignes, facture.entete.total_ht_affiche, seuil)
+        facture.lignes, facture.entete.total_ht_affiche, facture.entete.deductions_pied, seuil)
 
     if not ok:
         # Escalade : une seule re-extraction en Opus
@@ -103,7 +103,7 @@ def traiter_facture(conn, pdf, extractor, config) -> Resultat:
             fid = _persister(conn, pdf, facture, "ignoree", motif, modele, None, qualifs, cout)
             return Resultat("ignoree", motif, fid, None, 0, cout)
         ok, total = garde_fous.reconcilier_totaux(
-            facture.lignes, facture.entete.total_ht_affiche, seuil)
+            facture.lignes, facture.entete.total_ht_affiche, facture.entete.deductions_pied, seuil)
         if not ok:
             m = "totaux non réconciliés (Sonnet + Opus)"
             fid = _persister(conn, pdf, facture, "en_revue", m, modele, total, qualifs, cout)

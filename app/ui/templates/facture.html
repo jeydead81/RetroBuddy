@@ -20,9 +20,9 @@
 {% if f.n_rouge %}
   <p class="en_revue"><strong>{{ f.n_rouge }} ligne(s) à compléter avant de pouvoir générer la facture.</strong></p>
 {% endif %}
-{% if f.n_incoherent %}
-  <p class="erreur"><strong>⚠ {{ f.n_incoherent }} ligne(s) au prix incohérent</strong> — le PA net ne correspond pas au brut/remise.
-     Elles sont <strong>exclues du total</strong> tant qu'elles ne sont pas corrigées (voir « À vérifier » ci-dessous).</p>
+{% if f.n_a_verifier %}
+  <p class="erreur"><strong>⚠ {{ f.n_a_verifier }} ligne(s) à vérifier</strong> — prix incohérent avec le brut/remise, ou remise à 0.
+     Elles sont <strong>exclues du total et bloquent la génération</strong> tant qu'elles ne sont pas vérifiées (voir « À vérifier » ci-dessous).</p>
 {% endif %}
 
 <p>
@@ -54,27 +54,27 @@
 </p>
 
 <p style="color:var(--grey); font-size:.88rem;">💡 Les prix (PA brut, Remise %, PA net) sont modifiables directement ci-dessous —
-   modifiez puis <strong>Enregistrer</strong> (une correction ici est conservée, non écrasée par le recalcul).</p>
+   la ligne <strong>s'enregistre automatiquement</strong> quand vous en sortez (une correction ici est conservée, non écrasée par le recalcul).</p>
 
 {% if f.lignes_a_verifier %}
-  <h3 style="color:#991B1B;">⚠ Lignes à vérifier — prix incohérent (non facturées)</h3>
-  <p style="color:var(--grey); font-size:.88rem;">Le PA net ne colle pas au brut/remise (probable saisie erronée).
-     Corrige la valeur — le <strong>net cohérent</strong> est proposé en un clic — puis <strong>Enregistrer</strong> :
-     la ligne rejoint alors le total.</p>
+  <h3 style="color:#991B1B;">⚠ Lignes à vérifier (non facturées tant que non vérifiées)</h3>
+  <p style="color:var(--grey); font-size:.88rem;">Prix incohérent avec le brut/remise, ou remise à 0 (illisible sur la facture labo).
+     Corrigez la valeur — le <strong>net cohérent</strong> est proposé quand c'est possible ; la ligne
+     <strong>s'enregistre en sortant</strong> et rejoint le total.</p>
   <table>
-    <tr><th>Désignation</th><th>BL</th><th>Qté</th><th>PA brut</th><th>Remise %</th>
-        <th>PA net</th><th>Net cohérent</th><th>Montant actuel</th><th></th></tr>
+    <tr><th>Désignation</th><th>Motif</th><th>BL</th><th>Qté</th><th>PA brut</th><th>Remise %</th>
+        <th>PA net</th><th>Net cohérent</th><th>Montant actuel</th></tr>
     {% for l in f.lignes_a_verifier %}
       <tr data-id="{{ l.id }}" data-ug="{{ l.ug }}" style="background:#FEF2F2;">
         <td>{{ l.designation }}</td>
+        <td style="color:#991B1B; font-weight:600; white-space:nowrap;">{{ l.motif_verif }}</td>
         <td>{{ l.bl_numero or "" }}<br><small style="color:var(--grey);">{{ l.bl_date or "" }}</small></td>
         <td class="q">{{ l.qte | qte }}</td>
         <td><input class="f-brut" type="number" step="0.001" style="width:6rem;" value="{{ l.prix_brut if l.prix_brut is not none else '' }}"></td>
         <td><input class="f-remise" type="number" step="0.01" style="width:5rem;" value="{{ l.remise_pct if l.remise_pct is not none else '' }}"></td>
         <td><input class="f-net" type="number" step="0.001" style="width:6rem;" value="{{ l.prix_net if l.prix_net is not none else '' }}"></td>
-        <td><button type="button" onclick="proposer(this, {{ l.net_attendu }})">≈ {{ l.net_attendu }} €</button></td>
-        <td style="color:#991B1B; font-weight:600;">{{ l.montant_ht }}</td>
-        <td><button onclick="majLigne(this)">Enregistrer</button></td></tr>
+        <td>{% if l.net_attendu is not none %}<button type="button" onclick="proposer(this, {{ l.net_attendu }})">≈ {{ l.net_attendu }} €</button>{% else %}<span style="color:var(--grey);">—</span>{% endif %}</td>
+        <td style="color:#991B1B; font-weight:600;">{{ l.montant_ht }}</td></tr>
     {% endfor %}
   </table>
 {% endif %}
@@ -83,7 +83,7 @@
   <h3>Bon livraison {{ g.bl_numero or "" }} du {{ g.bl_date or "" }}</h3>
   <table>
     <tr><th>Désignation</th><th>Code</th><th>Qté</th><th>PA brut</th><th>Remise %</th>
-        <th>PA net</th><th>TVA</th><th>Montant HT</th><th></th></tr>
+        <th>PA net</th><th>TVA</th><th>Montant HT</th></tr>
     {% for l in g.lignes %}
       <tr data-id="{{ l.id }}" data-ug="{{ l.ug }}">
           <td>{{ l.designation }}</td><td>{{ l.code or "" }}</td><td class="q">{{ l.qte | qte }}</td>
@@ -91,8 +91,7 @@
           <td><input class="f-remise" type="number" step="0.01" style="width:5rem;" value="{{ l.remise_pct if l.remise_pct is not none else '' }}"></td>
           <td><input class="f-net" type="number" step="0.001" style="width:6rem;" value="{{ l.prix_net if l.prix_net is not none else '' }}"></td>
           <td>{{ l.tva if l.tva is not none else "" }}</td>
-          <td>{{ l.montant_ht }}</td>
-          <td><button onclick="majLigne(this)">Enregistrer</button></td></tr>
+          <td>{{ l.montant_ht }}</td></tr>
     {% endfor %}
   </table>
 {% endfor %}
@@ -135,11 +134,13 @@ async function recontroler() {
 
 function valLigne(tr, cls) { const v = tr.querySelector(cls).value; return v === "" ? null : parseFloat(v); }
 
-// Ligne à vérifier : pré-remplit le PA net cohérent proposé (et recalcule la remise).
+// Ligne à vérifier : applique le PA net cohérent proposé (recalcule la remise) et enregistre.
 function proposer(btn, net) {
-  const inp = btn.closest("tr").querySelector(".f-net");
+  const tr = btn.closest("tr");
+  const inp = tr.querySelector(".f-net");
   inp.value = net;
   inp.dispatchEvent(new Event("change", { bubbles: true }));
+  sauvegarder(tr);
 }
 
 // PA brut / remise modifiés -> recalcul du PA net ; PA net modifié -> recalcul de la remise.
@@ -160,16 +161,32 @@ document.querySelectorAll("tr[data-id]").forEach(tr => {
   });
 });
 
-async function majLigne(btn) {
-  const tr = btn.closest("tr");
+async function sauvegarder(tr) {
   const payload = {
     prix_brut: valLigne(tr, ".f-brut"), remise_pct: valLigne(tr, ".f-remise"),
     prix_net: valLigne(tr, ".f-net"), ug: parseFloat(tr.dataset.ug) || 0
   };
+  sessionStorage.setItem("scrollY", window.scrollY);   // pour retrouver sa place après reload
   const r = await fetch(`/resolution/ligne/${tr.dataset.id}`,
     { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-  if (r.ok) location.reload();          // reconstruit totaux + ventilation
-  else btn.textContent = "Erreur";
+  if (r.ok) location.reload();          // reconstruit totaux + ventilation + « à vérifier »
 }
+
+// Enregistrement automatique : la ligne se sauvegarde quand on en sort (pas à chaque champ).
+document.querySelectorAll("tr[data-id]").forEach(tr => {
+  tr.addEventListener("input", () => { tr.dataset.dirty = "1"; });
+  tr.addEventListener("focusout", e => {
+    if (e.relatedTarget && tr.contains(e.relatedTarget)) return;   // on reste dans la ligne
+    if (tr.dataset.dirty !== "1") return;
+    tr.dataset.dirty = "";
+    sauvegarder(tr);
+  });
+});
+
+// Restaure la position de défilement après le rechargement.
+window.addEventListener("load", () => {
+  const y = sessionStorage.getItem("scrollY");
+  if (y !== null) { window.scrollTo(0, +y); sessionStorage.removeItem("scrollY"); }
+});
 </script>
 {% endblock %}

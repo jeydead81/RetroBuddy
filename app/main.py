@@ -823,6 +823,15 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
         """Propage le référentiel à cette facture (lignes auto-rapprochées uniquement)."""
         return recalculer_prix_facture(conn(), retro_id)
 
+    @app.post("/facture/{retro_id}/supprimer")
+    def facture_supprimer(retro_id: int):
+        """Supprime une facture LGPI et ses lignes (tri / doublons). Irréversible."""
+        c = conn()
+        c.execute("DELETE FROM retro_lignes WHERE retro_id = ?", (retro_id,))
+        c.execute("DELETE FROM retro_documents WHERE id = ?", (retro_id,))
+        c.commit()
+        return {"ok": True}
+
     @app.post("/facture/{retro_id}/recontroler")
     def facture_recontroler(retro_id: int):
         """Re-vérifie la complétude au seuil 1 € depuis les totaux stockés (sans

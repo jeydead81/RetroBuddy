@@ -78,6 +78,6 @@ def test_resolution_pagination(tmp_path):
         _ligne(c, f"LIGNE{i:03d}", "rouge")
     c.commit()
     p1 = client.get("/resolution").text
-    assert p1.count("data-id=") == 50 + 1              # 50 lignes/page (+1 dans le JS)
+    assert p1.count('data-id="') == 50                 # 50 lignes/page
     assert "Suivant" in p1
     assert client.get("/resolution?page=3").status_code == 200

@@ -28,6 +28,8 @@
   {% if q %}<a href="/resolution"><button type="button">Effacer</button></a>{% endif %}
 </form>
 
+<p style="color:var(--grey); font-size:.85rem; margin:.2rem 0 .4rem;">💡 Les prix s'enregistrent automatiquement quand vous quittez la ligne.</p>
+
 <table id="table-resolution">
   <tr>
     <th>Désignation LGO</th><th>Code</th><th>Qté</th><th>BL</th><th>Date BL</th>
@@ -51,8 +53,6 @@
       {% if r["statut_ecart"] == "orange" %}
         <button onclick="accepter({{ r['id'] }})">Accepter</button>
         <button onclick="refuser({{ r['id'] }})">Refuser</button>
-      {% else %}
-        <button onclick="enregistrer({{ r['id'] }})">Enregistrer</button>
       {% endif %}
     </td>
   </tr>
@@ -76,13 +76,12 @@ function valeur(tr, cls) {
   const v = tr.querySelector(cls).value;
   return v === "" ? null : parseFloat(v);
 }
-async function enregistrer(id) {
-  const tr = document.querySelector(`tr[data-id="${id}"]`);
+async function sauvegarder(tr) {
   const payload = {
     prix_brut: valeur(tr, ".f-brut"), remise_pct: valeur(tr, ".f-remise"),
     ug: valeur(tr, ".f-ug") || 0, prix_net: valeur(tr, ".f-net")
   };
-  const r = await fetch(`/resolution/ligne/${id}`,
+  const r = await fetch(`/resolution/ligne/${tr.dataset.id}`,
     { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
   const d = await r.json();
   // Une saisie peut résoudre d'autres lignes du même produit (±6 mois) : on recharge.
@@ -93,6 +92,14 @@ async function enregistrer(id) {
     '<span class="badge ' + cls + '">' + txt + '</span>' + (d.valide_utilisateur ? ' ✓' : '');
 }
 document.querySelectorAll("#table-resolution tr[data-id]").forEach(tr => {
+  tr.addEventListener("input", () => { tr.dataset.dirty = "1"; });
+  // Enregistrement automatique quand on quitte la ligne (pas à chaque champ).
+  tr.addEventListener("focusout", e => {
+    if (e.relatedTarget && tr.contains(e.relatedTarget)) return;
+    if (tr.dataset.dirty !== "1") return;
+    tr.dataset.dirty = "";
+    sauvegarder(tr);
+  });
   tr.addEventListener("change", e => {
     const qte = parseFloat(tr.querySelector("td:nth-child(3)").textContent) || 0;
     const brut = valeur(tr, ".f-brut"), ug = valeur(tr, ".f-ug") || 0;
