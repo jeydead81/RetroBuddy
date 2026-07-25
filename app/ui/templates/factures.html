@@ -7,6 +7,21 @@
 {% if request.query_params.get('recup') %}
 <p style="color:#166534; font-weight:600;">✓ {{ request.query_params.get('recup') }} prix récupérés et versés au référentiel.</p>
 {% endif %}
+{% if request.query_params.get('reverif') %}
+<p style="color:#166534; font-weight:600;">✓ {{ request.query_params.get('reverif') }} facture(s) « en revue » récupérée(s) —
+   {{ request.query_params.get('reverifprix') or 0 }} prix versés au référentiel.</p>
+{% endif %}
+{% if n_reverif %}
+<div style="background:#FFFBEB; border:1px solid #FDE68A; border-radius:12px; padding:.7rem 1rem; margin:.4rem 0;">
+  <strong>{{ n_reverif }} facture(s) « en revue »</strong> récupérable(s) sans ré-import : l'écart de total
+  s'explique par une <strong>déduction de pied</strong> (escompte, avoir…), les produits sont complets.
+  <form action="/factures/reverifier-en-revue" method="post" style="display:inline; margin-left:.4rem;"
+        onsubmit="return confirm('Repasser ces {{ n_reverif }} facture(s) en « ingérée » et verser leurs prix au référentiel ?');">
+    <button type="submit">Re-vérifier &amp; récupérer</button>
+  </form>
+  <div style="color:var(--grey); font-size:.85rem; margin-top:.3rem;">Les factures dont des lignes manquent vraiment (Σ &lt; net) ne sont pas concernées — elles nécessitent un ré-import.</div>
+</div>
+{% endif %}
 {% if n_recup %}
 <div style="background:#FFFBEB; border:1px solid #FDE68A; border-radius:12px; padding:.7rem 1rem; margin:.4rem 0;">
   <strong>{{ n_recup }} facture(s)</strong> ingérée(s) sans prix exploitable (PA net non extrait).

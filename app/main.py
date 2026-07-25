@@ -14,7 +14,7 @@ from app.temps1.extraction_ia import ClaudeExtractor
 from app.temps1.extraction_lot import (EscaladeDifferee, ExtracteurPreExtrait,
                                        attendre_lots, resultats_lots, soumettre_lots)
 from app.temps1.pdf_reader import PdfDocument, lire_pdf
-from app.temps1 import selection
+from app.temps1 import recuperation, selection
 from app.temps1.pipeline import traiter_facture
 from app.temps1.referentiel import enregistrer_referentiel
 from app.temps1.schemas import FactureExtraite, LigneFacture
@@ -279,10 +279,13 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
             "JOIN factures f ON f.id = l.facture_id WHERE l.prix_net IS NULL "
             "AND l.montant_ht IS NOT NULL AND l.qte > 0 AND f.statut IN ('ingeree','en_revue')"
         ).fetchone()["n"]
+        # Factures « en revue » récupérables sans ré-import (écart = déduction de pied).
+        tol = app.state.config.get("tolerance_reconciliation_eur", TOLERANCE_MIN_EUR)
+        n_reverif = len(recuperation.factures_recuperables(c, tol))
         return TEMPLATES.TemplateResponse(request, "factures.html", {
             "rows": rows, "q": q, "page": page, "pages": pages, "total": total,
             "taille": TAILLE_PAGE, "tri": tri, "sens": sens, "n_recup": n_recup,
-            "filtre": filtre})
+            "n_reverif": n_reverif, "filtre": filtre})
 
     @app.get("/facture-labo/{fid}", response_class=HTMLResponse)
     def facture_labo(request: Request, fid: int):
@@ -405,6 +408,15 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
             n_ref += len(entrees)
         c.commit()
         return RedirectResponse(f"/factures?recup={n_ref}", status_code=303)
+
+    @app.post("/factures/reverifier-en-revue")
+    def reverifier_en_revue():
+        """Récupère les factures labo « en revue » dont l'écart = une déduction de pied
+        (Σ lignes ≥ net affiché) : les repasse ingérées et verse leurs lignes au référentiel,
+        sans ré-import. Les factures avec Σ < net (lignes manquantes) ne sont pas touchées."""
+        tol = app.state.config.get("tolerance_reconciliation_eur", TOLERANCE_MIN_EUR)
+        n_fact, n_ref = recuperation.recuperer_en_revue(conn(), tol)
+        return RedirectResponse(f"/factures?reverif={n_fact}&reverifprix={n_ref}", status_code=303)
 
     @app.get("/export-base")
     def export_base():
