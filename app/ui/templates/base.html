@@ -64,6 +64,10 @@
     .table-scroll table{ margin:.4rem 0; }
     th.sel-col, td.sel-col{ width:2.2rem; text-align:center; }
     th.sel-col input, td.sel-col input{ width:auto; }
+    /* Noms de fichiers longs : tronqués avec « … » (nom complet au survol) + padding
+       resserré pour que tout le tableau tienne dans la page sans couper « Ouvrir ». */
+    td.col-fichier{ max-width:16rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .table-scroll th, .table-scroll td{ padding-left:.5rem; padding-right:.5rem; }
 
     /* Boutons */
     button, .btn{ font-family:'Figtree',sans-serif; font-weight:600; font-size:.92rem;
