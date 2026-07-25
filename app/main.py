@@ -715,8 +715,12 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
                     client, lots, cfg["model_defaut"], FactureExtraite):
                 nom, chemin, emp = restants[int(cle)]
                 if not ok:
-                    Path(chemin).unlink(missing_ok=True)
-                    _pousser(_resultat_labo(nom, "erreur", resultat, 0, cout))
+                    if isinstance(resultat, str) and "tronqu" in resultat.lower():
+                        # Trop longue pour un appel batch -> découpage synchrone (rare).
+                        _pousser(_traiter_fichier_labo(nom, chemin, extractor))
+                    else:
+                        Path(chemin).unlink(missing_ok=True)
+                        _pousser(_resultat_labo(nom, "erreur", resultat, 0, cout))
                     continue
                 pre = ExtracteurPreExtrait({cfg["model_defaut"]: (resultat, cout)})
                 try:
@@ -735,8 +739,11 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
                     nom, chemin, emp = restants[int(cle)]
                     f_sonnet, c_sonnet = sonnet_par_cle[cle]
                     if not ok:
-                        Path(chemin).unlink(missing_ok=True)
-                        _pousser(_resultat_labo(nom, "erreur", resultat, 0, c_sonnet + cout))
+                        if isinstance(resultat, str) and "tronqu" in resultat.lower():
+                            _pousser(_traiter_fichier_labo(nom, chemin, extractor))
+                        else:
+                            Path(chemin).unlink(missing_ok=True)
+                            _pousser(_resultat_labo(nom, "erreur", resultat, 0, c_sonnet + cout))
                         continue
                     pre = ExtracteurPreExtrait({
                         cfg["model_defaut"]: (f_sonnet, c_sonnet),

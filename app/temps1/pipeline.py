@@ -1,7 +1,68 @@
 from dataclasses import dataclass
 
 from app.temps1 import classifier, garde_fous, selection
+from app.temps1.pdf_split import decouper_pdf, nombre_pages
 from app.temps1.referentiel import enregistrer_referentiel
+from app.temps1.schemas import EnteteFacture, FactureExtraite
+
+# Une facture labo très longue sature le plafond de tokens de sortie (extraction en un
+# appel tronquée). Au-delà de SEUIL_PAGES_SIMPLE pages on découpe d'emblée ; sinon appel
+# unique avec repli sur découpage en cas de troncature. (Miroir du côté rétro.)
+SEUIL_PAGES_SIMPLE = 12
+PAGES_PAR_LOT = 6
+
+
+def _est_troncature(e) -> bool:
+    s = str(e).lower()
+    return any(k in s for k in ("tronqu", "invalid json", "eof while parsing", "json_invalid"))
+
+
+def _fusionner(morceaux):
+    """Fusionne les FactureExtraite des sous-PDF : lignes concaténées, en-tête du 1er
+    morceau, total HT affiché + déductions de pied du morceau qui les porte (le récap est
+    en dernière page). Pas de groupes BL côté labo (contrairement au rétro)."""
+    lignes, entete, total, deductions, types = [], None, None, 0.0, []
+    for sous in morceaux:
+        if entete is None:
+            entete = sous.entete
+        if sous.entete.total_ht_affiche is not None:
+            total = sous.entete.total_ht_affiche
+        if sous.entete.deductions_pied:
+            deductions = sous.entete.deductions_pied
+        if sous.type_document:
+            types.append(sous.type_document)
+        lignes.extend(sous.lignes)
+    if entete is None:
+        entete = EnteteFacture()
+    entete.total_ht_affiche = total
+    entete.deductions_pied = deductions
+    type_doc = ("facture_marchandise" if "facture_marchandise" in types
+                else (types[0] if types else "autre"))
+    return FactureExtraite(type_document=type_doc, entete=entete, lignes=lignes)
+
+
+def _extraire_par_morceaux(extractor, pdf, model):
+    morceaux, cout = [], 0.0
+    for m in decouper_pdf(pdf, PAGES_PAR_LOT):
+        morceaux.append(extractor.extraire(m, model))
+        cout += getattr(extractor, "dernier_cout", 0.0)
+    extractor.dernier_cout = cout
+    return _fusionner(morceaux)
+
+
+def extraire_facture(extractor, pdf, model):
+    """Extraction labo robuste aux factures longues : un seul appel si la facture tient
+    sous le plafond de tokens, sinon découpage par paquets de pages puis fusion. Aucune
+    ligne perdue en silence : la réconciliation Σ montant_ht == net + déductions le vérifie.
+    Transparent pour l'extracteur pré-extrait (lot) : base64 vide -> 0 page -> appel unique."""
+    if nombre_pages(pdf) > SEUIL_PAGES_SIMPLE:
+        return _extraire_par_morceaux(extractor, pdf, model)
+    try:
+        return extractor.extraire(pdf, model)
+    except Exception as e:
+        if not _est_troncature(e):
+            raise
+        return _extraire_par_morceaux(extractor, pdf, model)
 
 
 @dataclass
@@ -65,7 +126,7 @@ def traiter_facture(conn, pdf, extractor, config) -> Resultat:
     cout = 0.0
 
     modele = config["model_defaut"]
-    facture = extractor.extraire(pdf, modele)
+    facture = extraire_facture(extractor, pdf, modele)
     cout += getattr(extractor, "dernier_cout", 0.0)
     dec, motif = classifier.decision(facture)
 
@@ -75,7 +136,7 @@ def traiter_facture(conn, pdf, extractor, config) -> Resultat:
     # on met EN REVUE (signalé) plutôt qu'ignoré — jamais écarté en silence.
     if dec == "ignorer" and _semble_marchandise(facture):
         modele = config["model_escalade"]
-        facture = extractor.extraire(pdf, modele)
+        facture = extraire_facture(extractor, pdf, modele)
         cout += getattr(extractor, "dernier_cout", 0.0)
         dec, motif = classifier.decision(facture)
         if dec == "ignorer":
@@ -95,7 +156,7 @@ def traiter_facture(conn, pdf, extractor, config) -> Resultat:
     if not ok:
         # Escalade : une seule re-extraction en Opus
         modele = config["model_escalade"]
-        facture = extractor.extraire(pdf, modele)
+        facture = extraire_facture(extractor, pdf, modele)
         cout += getattr(extractor, "dernier_cout", 0.0)
         qualifs = _qualifier(facture)
         dec, motif = classifier.decision(facture)
