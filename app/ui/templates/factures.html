@@ -54,19 +54,50 @@
        style="color:inherit; text-decoration:none;">{{ label }}{% if tri == key %} <span style="font-size:.8em;">{{ '▲' if sens == 'asc' else '▼' }}</span>{% endif %}</a></th>
 {% endmacro %}
 
+<p style="margin:.4rem 0;">
+  <button id="btn-suppr" onclick="supprimerSelection()" disabled>Supprimer la sélection (0)</button>
+</p>
+
+<div class="table-scroll">
 <table>
-  <tr>{{ th('#','id') }}{{ th('Fichier','fichier') }}{{ th('Labo','labo') }}{{ th('Type','type') }}{{ th('Statut','statut') }}{{ th('Motif','motif') }}{{ th('Total affiché','affiche') }}{{ th('Total calculé','calcule') }}<th></th></tr>
+  <tr><th class="sel-col"><input type="checkbox" id="check-all" title="Tout sélectionner"></th>{{ th('#','id') }}{{ th('Fichier','fichier') }}{{ th('Labo','labo') }}{{ th('Type','type') }}{{ th('Statut','statut') }}{{ th('Motif','motif') }}{{ th('Total affiché','affiche') }}{{ th('Total calculé','calcule') }}<th></th></tr>
   {% for r in rows %}
-    <tr><td>{{ r["id"] }}</td><td>{{ r["fichier"] }}</td><td>{{ r["labo"] }}</td>
+    <tr><td class="sel-col"><input type="checkbox" class="sel" value="{{ r['id'] }}"></td>
+        <td>{{ r["id"] }}</td><td>{{ r["fichier"] }}</td><td>{{ r["labo"] }}</td>
         <td>{{ r["type_document"] }}</td><td>{{ ui.badge(r["statut"]) }}</td>
         <td>{{ r["motif"] or "" }}</td>
         <td>{{ "%.2f"|format(r["total_affiche"]) if r["total_affiche"] is not none else "" }}</td>
         <td>{{ "%.2f"|format(r["total_calcule"]) if r["total_calcule"] is not none else "" }}</td>
         <td><a href="/facture-labo/{{ r['id'] }}">Ouvrir</a></td></tr>
   {% else %}
-    <tr><td colspan="9" style="color:var(--grey); padding:1rem;">{% if q %}Aucun résultat pour « {{ q }} ».{% else %}Aucune facture laboratoire — importez-en à l'<a href="/import-labos">étape 1</a>.{% endif %}</td></tr>
+    <tr><td colspan="10" style="color:var(--grey); padding:1rem;">{% if q %}Aucun résultat pour « {{ q }} ».{% else %}Aucune facture laboratoire — importez-en à l'<a href="/import-labos">étape 1</a>.{% endif %}</td></tr>
   {% endfor %}
 </table>
+</div>
+
+<script>
+const btnSuppr = document.getElementById("btn-suppr");
+const checkAll = document.getElementById("check-all");
+function selection() { return [...document.querySelectorAll(".sel:checked")].map(c => c.value); }
+function majBtn() {
+  const n = selection().length;
+  btnSuppr.disabled = n === 0;
+  btnSuppr.textContent = "Supprimer la sélection (" + n + ")";
+}
+document.querySelectorAll(".sel").forEach(c => c.addEventListener("change", majBtn));
+if (checkAll) checkAll.addEventListener("change", () => {
+  document.querySelectorAll(".sel").forEach(c => { c.checked = checkAll.checked; });
+  majBtn();
+});
+async function supprimerSelection() {
+  const ids = selection();
+  if (!ids.length) return;
+  if (!confirm("Supprimer définitivement " + ids.length + " facture(s) et toutes leurs lignes ?")) return;
+  const r = await fetch("/factures/supprimer", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) });
+  if (r.ok) location.reload(); else alert("Suppression impossible.");
+}
+</script>
 
 {% if total > taille %}
 <p style="display:flex; gap:.9rem; align-items:center; flex-wrap:wrap; color:var(--grey);">

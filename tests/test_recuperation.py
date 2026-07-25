@@ -35,6 +35,22 @@ def test_recupere_facture_avec_deduction(tmp_path):
     assert c.execute("SELECT COUNT(*) FROM referentiel_prix").fetchone()[0] == 2
 
 
+def test_recupere_calcule_le_net_manquant(tmp_path):
+    c = _conn(tmp_path)
+    _facture(c, 1, ta=100.0, tc=110.0)                   # Σ 110 >= net 100 -> déduction
+    # ligne SANS prix_net (montant + brut + remise présents) : doit être reconstituée
+    c.execute(
+        "INSERT INTO lignes_facture (facture_id, code, designation, qte, prix_brut, "
+        "remise_pct, prix_net, montant_ht, tva) VALUES "
+        "(1, '3400930000007', 'X', 2, 60.0, 8.0, NULL, 110.0, 20.0)")
+    c.commit()
+    n_fact, n_ref = recuperer_en_revue(c, 1.0)
+    assert n_fact == 1 and n_ref == 1                    # net calculé -> exploitable -> référentiel
+    assert c.execute("SELECT prix_net FROM lignes_facture WHERE facture_id=1").fetchone()[0] \
+        == round(60.0 * 0.92, 4)                         # brut×(1−remise)
+    assert c.execute("SELECT COUNT(*) FROM referentiel_prix WHERE code='3400930000007'").fetchone()[0] == 1
+
+
 def test_ne_recupere_pas_si_lignes_manquantes(tmp_path):
     c = _conn(tmp_path)
     _facture(c, 1, ta=970.99, tc=910.99)                 # Σ 910,99 < net 970,99 -> lignes manquent

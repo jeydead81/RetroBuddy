@@ -418,6 +418,28 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
         n_fact, n_ref = recuperation.recuperer_en_revue(conn(), tol)
         return RedirectResponse(f"/factures?reverif={n_fact}&reverifprix={n_ref}", status_code=303)
 
+    @app.post("/factures/supprimer")
+    async def factures_supprimer_lot(request: Request):
+        """Suppression multiple de factures labo (+ leurs lignes). Irréversible."""
+        ids = [int(i) for i in (await request.json()).get("ids", [])]
+        c = conn()
+        for fid in ids:
+            c.execute("DELETE FROM lignes_facture WHERE facture_id = ?", (fid,))
+            c.execute("DELETE FROM factures WHERE id = ?", (fid,))
+        c.commit()
+        return {"supprimees": len(ids)}
+
+    @app.post("/factures-retro/supprimer")
+    async def factures_retro_supprimer_lot(request: Request):
+        """Suppression multiple de factures LGPI (+ leurs lignes). Irréversible."""
+        ids = [int(i) for i in (await request.json()).get("ids", [])]
+        c = conn()
+        for rid in ids:
+            c.execute("DELETE FROM retro_lignes WHERE retro_id = ?", (rid,))
+            c.execute("DELETE FROM retro_documents WHERE id = ?", (rid,))
+        c.commit()
+        return {"supprimees": len(ids)}
+
     @app.get("/export-base")
     def export_base():
         try:                                     # WAL : replier le journal dans le .db

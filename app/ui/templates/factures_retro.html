@@ -14,11 +14,18 @@
 </form>
 
 {% if rows %}
+<p style="margin:.4rem 0;">
+  <button id="btn-suppr" onclick="supprimerSelection()" disabled>Supprimer la sélection (0)</button>
+</p>
+
+<div class="table-scroll">
 <table>
-  <tr><th>#</th><th>Numéro</th><th>Émettrice</th><th>Destinataire</th><th>Lignes</th>
+  <tr><th class="sel-col"><input type="checkbox" id="check-all" title="Tout sélectionner"></th>
+      <th>#</th><th>Numéro</th><th>Émettrice</th><th>Destinataire</th><th>Lignes</th>
       <th>Rapprochées</th><th>À compléter</th><th>Contrôle total</th><th>Doublon</th><th></th></tr>
   {% for r in rows %}
     <tr>
+      <td class="sel-col"><input type="checkbox" class="sel" value="{{ r['id'] }}"></td>
       <td>{{ r["id"] }}</td><td>{{ r["numero"] }}</td>
       <td>{{ r["pharmacie_emettrice"] }}</td><td>{{ r["pharmacie_destinataire"] }}</td>
       <td>{{ r["n_lignes"] }}</td>
@@ -26,23 +33,35 @@
       <td class="{{ 'en_revue' if r['n_rouge'] else 'ingeree' }}">{{ r["n_rouge"] }}</td>
       <td>{% if r["reconciliation_ok"] == 0 %}<span class="badge b-danger">⚠ à vérifier</span>{% else %}<span class="badge b-ok">OK</span>{% endif %}</td>
       <td>{% if r["n_meme_numero"] and r["n_meme_numero"] > 1 %}<span class="badge b-danger">⚠ doublon</span>{% endif %}</td>
-      <td style="white-space:nowrap;"><a href="/facture/{{ r['id'] }}">Ouvrir</a>
-          · <a href="#" class="suppr" data-id="{{ r['id'] }}" data-num="{{ r['numero'] or '' }}" style="color:#991B1B;">Supprimer</a></td>
+      <td><a href="/facture/{{ r['id'] }}">Ouvrir</a></td>
     </tr>
   {% endfor %}
 </table>
-<p style="color:var(--grey); font-size:.88rem;">⚠ <strong>Doublon</strong> = ce numéro de facture a été importé plusieurs fois. Risque de double facturation : <strong>Supprimez</strong> l'import en trop avant de générer.</p>
+</div>
+<p style="color:var(--grey); font-size:.88rem;">⚠ <strong>Doublon</strong> = ce numéro de facture a été importé plusieurs fois. Risque de double facturation : cochez l'import en trop et <strong>Supprimez la sélection</strong> avant de générer.</p>
 
 <script>
-document.querySelectorAll("a.suppr").forEach(a => {
-  a.addEventListener("click", async e => {
-    e.preventDefault();
-    const num = a.dataset.num || ("#" + a.dataset.id);
-    if (!confirm("Supprimer définitivement la facture LGPI " + num + " et toutes ses lignes ?")) return;
-    const r = await fetch("/facture/" + a.dataset.id + "/supprimer", { method: "POST" });
-    if (r.ok) location.reload(); else alert("Suppression impossible.");
-  });
+const btnSuppr = document.getElementById("btn-suppr");
+const checkAll = document.getElementById("check-all");
+function selection() { return [...document.querySelectorAll(".sel:checked")].map(c => c.value); }
+function majBtn() {
+  const n = selection().length;
+  btnSuppr.disabled = n === 0;
+  btnSuppr.textContent = "Supprimer la sélection (" + n + ")";
+}
+document.querySelectorAll(".sel").forEach(c => c.addEventListener("change", majBtn));
+if (checkAll) checkAll.addEventListener("change", () => {
+  document.querySelectorAll(".sel").forEach(c => { c.checked = checkAll.checked; });
+  majBtn();
 });
+async function supprimerSelection() {
+  const ids = selection();
+  if (!ids.length) return;
+  if (!confirm("Supprimer définitivement " + ids.length + " facture(s) LGPI et toutes leurs lignes ?")) return;
+  const r = await fetch("/factures-retro/supprimer", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) });
+  if (r.ok) location.reload(); else alert("Suppression impossible.");
+}
 </script>
 {% else %}
 <p style="color:var(--grey); padding:1rem 0;">{% if q %}Aucun résultat pour « {{ q }} ».{% else %}Aucune facture LGPI pour l'instant — importez une facture LGO à l'<a href="/retro">étape 2</a>.{% endif %}</p>

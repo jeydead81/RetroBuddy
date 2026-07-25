@@ -59,6 +59,11 @@
     table tr:last-child td{ border-bottom:none; }
     td input{ font:inherit; padding:.28rem .4rem; border:1px solid var(--border);
       border-radius:7px; width:6.2rem; background:#fff; }
+    /* Tableaux larges : défilement horizontal DANS la page au lieu de déborder à droite */
+    .table-scroll{ overflow-x:auto; -webkit-overflow-scrolling:touch; }
+    .table-scroll table{ margin:.4rem 0; }
+    th.sel-col, td.sel-col{ width:2.2rem; text-align:center; }
+    th.sel-col input, td.sel-col input{ width:auto; }
 
     /* Boutons */
     button, .btn{ font-family:'Figtree',sans-serif; font-weight:600; font-size:.92rem;
