@@ -968,7 +968,7 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
     @app.post("/config/pied")
     def config_pied(pied: str = Form("")):
         _set_param("pied_facture", pied.strip())
-        return RedirectResponse("/reglages?ok=pied", status_code=303)
+        return RedirectResponse("/reglages?ok=pied#pied", status_code=303)
 
     @app.post("/surveillance/ajouter")
     def surveillance_ajouter(terme: str = Form("")):
@@ -977,14 +977,14 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
             c = conn()
             c.execute("INSERT INTO surveillance (terme) VALUES (?)", (t,))
             c.commit()
-        return RedirectResponse("/reglages?ok=surv", status_code=303)
+        return RedirectResponse("/reglages?ok=surv#surv", status_code=303)
 
     @app.post("/surveillance/supprimer/{sid}")
     def surveillance_supprimer(sid: int):
         c = conn()
         c.execute("DELETE FROM surveillance WHERE id = ?", (sid,))
         c.commit()
-        return RedirectResponse("/reglages?ok=surv", status_code=303)
+        return RedirectResponse("/reglages?ok=surv#surv", status_code=303)
 
     @app.post("/entetes/maj")
     def entetes_maj(emettrice: str = Form(...), mentions: str = Form("")):
