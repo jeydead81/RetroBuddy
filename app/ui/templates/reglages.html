@@ -92,11 +92,14 @@
     <button type="submit">Ajouter</button>
   </form>
   {% for s in surveillance %}
-  <div class="ligne-suppr">
-    <span class="nom">{{ s.terme }}</span>
-    <form action="/surveillance/supprimer/{{ s.id }}" method="post"
+  <div style="display:flex; align-items:center; justify-content:space-between; gap:.6rem;
+              padding:.5rem 0; border-top:1px solid var(--border);">
+    <span style="font-weight:600;">{{ s.terme }}</span>
+    <form action="/surveillance/supprimer/{{ s.id }}" method="post" style="margin:0;"
           onsubmit="return confirm('Retirer « {{ s.terme }} » de la surveillance ?');">
-      <button type="submit" class="rouge">Retirer</button>
+      <button type="submit" title="Retirer" aria-label="Retirer {{ s.terme }}"
+              style="background:var(--danger); color:#fff; border:none; border-radius:999px;
+                     width:1.7rem; height:1.7rem; padding:0; line-height:1; cursor:pointer; font-size:1rem;">✕</button>
     </form>
   </div>
   {% else %}
