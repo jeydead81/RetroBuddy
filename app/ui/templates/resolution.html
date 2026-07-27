@@ -37,8 +37,8 @@
     <th>Statut</th><th>Action</th>
   </tr>
   {% for r in rows %}
-  <tr data-id="{{ r['id'] }}" class="ligne {{ r['statut_ecart'] }}">
-    <td>{{ r["designation"] }}</td>
+  <tr data-id="{{ r['id'] }}" class="ligne {{ r['statut_ecart'] }}{% if r['id'] in ids_surveilles %} surveille{% endif %}">
+    <td>{{ r["designation"] }}{% if r['id'] in ids_surveilles %} <span class="badge b-ug">⚑ UG&nbsp;?</span>{% endif %}</td>
     <td>{{ r["code"] }}</td>
     <td>{{ r["qte"] | qte }}</td>
     <td>{{ r["bl_numero"] }}</td>

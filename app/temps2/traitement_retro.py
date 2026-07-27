@@ -162,12 +162,14 @@ def traiter_retro(conn, pdf, extractor, config) -> ResultatRetro:
     cur = conn.execute(
         """
         INSERT INTO retro_documents
-          (fichier, pharmacie_emettrice, pharmacie_destinataire, date_vente, numero,
+          (fichier, pharmacie_emettrice, pharmacie_destinataire,
+           pharmacie_destinataire_adresse, date_vente, numero,
            cout_estime, total_ht_affiche, total_ht_calcule, reconciliation_ok,
            motif_reconciliation)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (pdf.nom, retro.entete.pharmacie_emettrice, retro.entete.pharmacie_destinataire,
+         retro.entete.pharmacie_destinataire_adresse,
          retro.entete.date_vente, retro.entete.numero, cout,
          retro.entete.total_ht_affiche, total_calc, int(ok), motif),
     )

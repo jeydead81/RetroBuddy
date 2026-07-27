@@ -7,6 +7,7 @@ from fastapi import Depends, FastAPI, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
+from app import surveillance
 from app.config import charger_config, enregistrer_cle_api
 from app.db import get_connection, init_db
 from app.format_util import fmt_qte
@@ -25,7 +26,7 @@ from app.temps3.rematch import rematcher
 from app.temps4.export_csv import facture_csv
 from app.temps4.export_pdf import facture_pdf
 from app.temps4.export_xlsx import facture_xlsx
-from app.temps4.facture_builder import construire_facture
+from app.temps4.facture_builder import PIED_FACTURE_DEFAUT, construire_facture
 from app.temps4.recalcul import recalculer_prix_facture
 from app.jobs import RegistreJobs, lancer_job
 
@@ -570,9 +571,13 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
         n_manuel = _n("statut_ecart='resolu' AND saisie_manuelle=1")
         compteurs = {"rouge": n_rouge, "a_confirmer": n_orange, "auto": n_auto,
                      "manuel": n_manuel, "total": n_rouge + n_orange + n_auto + n_manuel}
+        termes = surveillance.termes_surveilles(c)
+        ids_surveilles = {r["id"] for r in rows
+                          if surveillance.est_surveille(r["designation"], r["code"], termes)}
         return TEMPLATES.TemplateResponse(request, "resolution.html", {
             "rows": rows, "compteurs": compteurs, "q": q, "page": page,
-            "pages": pages, "total": total, "taille": TAILLE_PAGE})
+            "pages": pages, "total": total, "taille": TAILLE_PAGE,
+            "ids_surveilles": ids_surveilles})
 
     @app.post("/resolution/ligne/{ligne_id}")
     def resolution_enregistrer(ligne_id: int, payload: dict):
@@ -953,10 +958,33 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
     @app.get("/reglages", response_class=HTMLResponse)
     def reglages(request: Request):
         cle_presente, cle_masquee = _cle_info()
+        surv = conn().execute("SELECT id, terme FROM surveillance ORDER BY terme").fetchall()
         return TEMPLATES.TemplateResponse(request, "reglages.html", {
             "cle_presente": cle_presente, "cle_masquee": cle_masquee,
             "compteurs": _compteurs_donnees(), "entetes": _entetes_facturation(),
-            "cout_labo": _cout_total(), "cout_retro": _cout_total_retro()})
+            "cout_labo": _cout_total(), "cout_retro": _cout_total_retro(),
+            "pied_facture": _param("pied_facture", PIED_FACTURE_DEFAUT), "surveillance": surv})
+
+    @app.post("/config/pied")
+    def config_pied(pied: str = Form("")):
+        _set_param("pied_facture", pied.strip())
+        return RedirectResponse("/reglages?ok=pied", status_code=303)
+
+    @app.post("/surveillance/ajouter")
+    def surveillance_ajouter(terme: str = Form("")):
+        t = terme.strip()
+        if t:
+            c = conn()
+            c.execute("INSERT INTO surveillance (terme) VALUES (?)", (t,))
+            c.commit()
+        return RedirectResponse("/reglages?ok=surv", status_code=303)
+
+    @app.post("/surveillance/supprimer/{sid}")
+    def surveillance_supprimer(sid: int):
+        c = conn()
+        c.execute("DELETE FROM surveillance WHERE id = ?", (sid,))
+        c.commit()
+        return RedirectResponse("/reglages?ok=surv", status_code=303)
 
     @app.post("/entetes/maj")
     def entetes_maj(emettrice: str = Form(...), mentions: str = Form("")):

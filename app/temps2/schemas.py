@@ -21,6 +21,7 @@ class VentilationTvaLgo(BaseModel):
 class RetroEntete(BaseModel):
     pharmacie_emettrice: str | None = None
     pharmacie_destinataire: str | None = None
+    pharmacie_destinataire_adresse: str | None = None   # adresse du destinataire (multi-lignes)
     date_vente: str | None = None
     numero: str | None = None
     total_ht_affiche: float | None = None        # Total HT du récap — contrôle (N1)

@@ -36,12 +36,15 @@ def facture_pdf(facture):
         el.append(Paragraph(mentions.replace("\n", "<br/>"), _ST_MENTIONS))
         el.append(Spacer(1, 2 * mm))
     el.append(Paragraph(f"Facture de rétrocession {facture.numero or ''}", _ST_TITRE))
-    entete_info = ""
     if not mentions:
-        entete_info += f"Émettrice : <b>{facture.emettrice or ''}</b> · "
-    entete_info += (f"Destinataire : <b>{facture.destinataire or ''}</b>"
-                    f" · Date : {facture.date_vente or ''}")
-    el.append(Paragraph(entete_info, _ST_INFO))
+        el.append(Paragraph(f"Émettrice : <b>{facture.emettrice or ''}</b>", _ST_INFO))
+    # Bloc destinataire : nom + adresse (multi-lignes), puis la date.
+    adresse = getattr(facture, "destinataire_adresse", None)
+    dest = f"Facturé à : <b>{facture.destinataire or ''}</b>"
+    if adresse:
+        dest += "<br/>" + adresse.replace("\n", "<br/>")
+    dest += f"<br/>Date : {facture.date_vente or ''}"
+    el.append(Paragraph(dest, _ST_INFO))
     exclues = getattr(facture, "n_rouge", 0) + getattr(facture, "n_a_verifier", 0)
     if exclues:
         el.append(Paragraph(
@@ -116,6 +119,11 @@ def facture_pdf(facture):
         ("BOTTOMPADDING", (0, i_ttc), (-1, i_ttc), 4),
     ]))
     el.append(tv)
+
+    pied = getattr(facture, "pied_facture", None)
+    if pied:
+        el.append(Spacer(1, 3 * mm))
+        el.append(Paragraph(pied.replace("\n", "<br/>"), _ST_MENTIONS))
 
     doc.build(el)
     return buf.getvalue()

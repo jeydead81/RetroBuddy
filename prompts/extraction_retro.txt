@@ -5,7 +5,10 @@ RÈGLES IMPÉRATIVES :
 1. type_document = "retro_lgo".
 2. EN-TÊTE :
    - pharmacie_emettrice = la société qui ÉMET la facture (bloc société en haut).
-   - pharmacie_destinataire = la pharmacie ACHETEUSE (bloc destinataire).
+   - pharmacie_destinataire = le NOM de la pharmacie ACHETEUSE (bloc destinataire).
+   - pharmacie_destinataire_adresse = l'ADRESSE complète de cette pharmacie acheteuse,
+     telle qu'imprimée sous son nom (rue, code postal + ville, pays), en conservant les
+     retours à la ligne (séparés par des sauts de ligne). Sans répéter le nom.
    - date_vente = la date de la vente rétrocession ; numero = le numéro de facture.
 3. REGROUPEMENT PAR BL : le document liste des en-têtes "Bon livraison <numéro> du
    <date>". Chaque en-tête s'applique à TOUTES les lignes produit qui suivent, jusqu'au

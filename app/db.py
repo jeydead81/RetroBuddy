@@ -84,6 +84,10 @@ CREATE TABLE IF NOT EXISTS parametres (
 CREATE TABLE IF NOT EXISTS entetes_facture (
   emettrice TEXT PRIMARY KEY, mentions TEXT
 );
+
+CREATE TABLE IF NOT EXISTS surveillance (
+  id INTEGER PRIMARY KEY, terme TEXT NOT NULL
+);
 """
 
 # Colonnes ajoutées après la V1 initiale. Migration idempotente : la base
@@ -103,6 +107,7 @@ _COLONNES_AJOUTEES = [
     ("retro_documents", "empreinte", "TEXT"),
     # 'facture' (prix issu d'une facture labo) | 'resolution' (prix saisi à la main).
     ("referentiel_prix", "source", "TEXT DEFAULT 'facture'"),
+    ("retro_documents", "pharmacie_destinataire_adresse", "TEXT"),   # bloc adresse du destinataire
 ]
 
 

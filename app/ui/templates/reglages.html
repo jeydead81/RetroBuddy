@@ -70,6 +70,42 @@
 </div>
 
 <div class="carte">
+  <h2>Pied de page de la facture</h2>
+  <p style="color:var(--grey); font-size:.9rem;">Mention imprimée en bas de chaque facture générée
+     (ex. adhésion à un centre de gestion agréé). Videz le champ pour ne rien afficher.</p>
+  {% if ok == 'pied' %}<p class="flash-ok">✓ Pied de page enregistré.</p>{% endif %}
+  <form action="/config/pied" method="post">
+    <textarea name="pied" rows="3" style="width:100%; font-family:inherit; margin:.3rem 0;">{{ pied_facture }}</textarea>
+    <button type="submit">Enregistrer</button>
+  </form>
+</div>
+
+<div class="carte">
+  <h2>Surveillance UG (flag bleu)</h2>
+  <p style="color:var(--grey); font-size:.9rem;">Ajoutez des noms de <strong>labo</strong> ou de
+     <strong>produit</strong> (ou un code) : les lignes correspondantes sont surlignées
+     <span class="badge b-ug">⚑ UG&nbsp;?</span> en résolution et sur la facture, pour les repérer
+     (vous convertissez l'UG en remise à la main).</p>
+  {% if ok == 'surv' %}<p class="flash-ok">✓ Liste mise à jour.</p>{% endif %}
+  <form action="/surveillance/ajouter" method="post" class="reglages-form">
+    <input type="text" name="terme" placeholder="ex. BIOGARAN, ou une désignation, ou un code"
+           style="flex:1; min-width:260px;" required>
+    <button type="submit">Ajouter</button>
+  </form>
+  {% for s in surveillance %}
+  <div class="ligne-suppr">
+    <span class="nom">{{ s.terme }}</span>
+    <form action="/surveillance/supprimer/{{ s.id }}" method="post"
+          onsubmit="return confirm('Retirer « {{ s.terme }} » de la surveillance ?');">
+      <button type="submit" class="rouge">Retirer</button>
+    </form>
+  </div>
+  {% else %}
+  <p style="color:var(--grey);">Aucun terme surveillé pour l'instant.</p>
+  {% endfor %}
+</div>
+
+<div class="carte">
   <h2>Coûts d'extraction (depuis la dernière réinitialisation)</h2>
   <p>Labo : <strong>{{ "%.2f"|format(cout_labo) }}</strong> € ·
      Rétrocession : <strong>{{ "%.2f"|format(cout_retro) }}</strong> €</p>

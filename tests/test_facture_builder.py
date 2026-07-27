@@ -83,6 +83,25 @@ def test_retro_id_inconnu_renvoie_none(tmp_path):
     assert construire_facture(_conn(tmp_path), 999) is None
 
 
+def test_flag_surveille_pied_et_adresse_destinataire(tmp_path):
+    conn = _conn(tmp_path)
+    cur = conn.execute(
+        "INSERT INTO retro_documents (pharmacie_emettrice, pharmacie_destinataire, "
+        "pharmacie_destinataire_adresse, numero, date_vente) VALUES "
+        "('SERALY', 'PHARMACIE DE CENON', '1 Place Michel Gaudineau\n86530 CENON', 'N1', '22/09/2025')")
+    rid = cur.lastrowid
+    conn.execute("INSERT INTO surveillance (terme) VALUES ('biogaran')")
+    _ligne(conn, rid, "DOLIPRANE BIOGARAN", 2, 5.0, 10.0, "BL1", "01/08/2025")
+    _ligne(conn, rid, "AUTRE PRODUIT", 1, 4.0, 10.0, "BL1", "01/08/2025")
+    conn.commit()
+    f = construire_facture(conn, rid)
+    flags = {l.designation: l.surveille for g in f.groupes for l in g.lignes}
+    assert flags["DOLIPRANE BIOGARAN"] is True            # labo surveillé -> flag
+    assert flags["AUTRE PRODUIT"] is False
+    assert "centre de gestion" in f.pied_facture          # pied par défaut
+    assert "Gaudineau" in f.destinataire_adresse          # adresse destinataire remontée
+
+
 def test_ligne_incoherente_signalee_et_exclue(tmp_path):
     conn = _conn(tmp_path)
     rid = _doc(conn)

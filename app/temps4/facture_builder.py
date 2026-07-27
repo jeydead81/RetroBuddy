@@ -1,5 +1,11 @@
 from dataclasses import dataclass, field
 
+from app.surveillance import est_surveille, termes_surveilles
+
+# Pied de page par défaut (mention CGA) — modifiable dans Réglages (param 'pied_facture').
+PIED_FACTURE_DEFAUT = ("Membre d'un centre de gestion agréé par l'administration fiscale, "
+                       "acceptant à ce titre les règlements par chèques libellés à son nom")
+
 
 @dataclass
 class LigneFacturee:
@@ -18,6 +24,7 @@ class LigneFacturee:
     motif_verif: str | None = None    # « prix incohérent » | « remise à 0 »
     bl_numero: str | None = None
     bl_date: str | None = None
+    surveille: bool = False           # labo/produit surveillé (UG possible) -> flag bleu
 
 
 @dataclass
@@ -53,6 +60,8 @@ class Facture:
     total_ht_calcule: float | None = None
     motif_reconciliation: str | None = None
     mentions_emettrice: str | None = None   # en-tête légal de la pharmacie émettrice
+    destinataire_adresse: str | None = None  # bloc adresse du destinataire (multi-lignes)
+    pied_facture: str | None = None          # mention de pied de page (CGA…)
     n_a_verifier: int = 0                    # lignes à vérifier (exclues du total, bloquantes)
     lignes_a_verifier: list = field(default_factory=list)
 
@@ -89,12 +98,15 @@ def _net_incoherent(qte, prix_brut, remise_pct, prix_net, ug):
 
 def construire_facture(conn, retro_id):
     doc = conn.execute(
-        "SELECT pharmacie_emettrice, pharmacie_destinataire, numero, date_vente, "
-        "reconciliation_ok, total_ht_affiche, total_ht_calcule, motif_reconciliation "
-        "FROM retro_documents WHERE id = ?", (retro_id,)).fetchone()
+        "SELECT pharmacie_emettrice, pharmacie_destinataire, pharmacie_destinataire_adresse, "
+        "numero, date_vente, reconciliation_ok, total_ht_affiche, total_ht_calcule, "
+        "motif_reconciliation FROM retro_documents WHERE id = ?", (retro_id,)).fetchone()
     if doc is None:
         return None
     reco_ok = doc["reconciliation_ok"] != 0   # None (anciennes lignes) -> considéré OK
+    termes = termes_surveilles(conn)
+    r_pied = conn.execute("SELECT valeur FROM parametres WHERE cle='pied_facture'").fetchone()
+    pied = r_pied["valeur"] if r_pied else PIED_FACTURE_DEFAUT
     emet = (doc["pharmacie_emettrice"] or "").strip()
     ent = conn.execute("SELECT mentions FROM entetes_facture WHERE emettrice = ?",
                        (emet,)).fetchone()
@@ -135,20 +147,21 @@ def construire_facture(conn, retro_id):
         # Remise à 0 non revue : sur certaines factures la remise est illisible et ressort
         # à 0 -> on bloque tant que l'utilisateur ne l'a pas vérifiée (décision Baptiste).
         remise_zero = (l["remise_pct"] == 0) and not valide_main
+        surveille = est_surveille(l["designation"], l["code"], termes)
         if net_attendu is not None or remise_zero:
             a_verifier.append(LigneFacturee(
                 l["designation"], l["code"], qte, l["prix_brut"], remise, prix_net,
                 l["tva"], montant, id=l["id"], ug=l["ug"] or 0,
                 incoherente=True, net_attendu=net_attendu,
                 motif_verif=("prix incohérent" if net_attendu is not None else "remise à 0"),
-                bl_numero=l["bl_numero"], bl_date=l["bl_date"]))
+                bl_numero=l["bl_numero"], bl_date=l["bl_date"], surveille=surveille))
             continue
         total_ht = round(total_ht + montant, 2)
         taux = l["tva"] if l["tva"] is not None else 0.0
         bases[taux] = round(bases.get(taux, 0.0) + montant, 2)
         lf = LigneFacturee(l["designation"], l["code"], qte, l["prix_brut"],
                            remise, prix_net, l["tva"], montant,
-                           id=l["id"], ug=l["ug"] or 0)
+                           id=l["id"], ug=l["ug"] or 0, surveille=surveille)
         cle = (l["bl_numero"], l["bl_date"])
         if courant is None or (courant.bl_numero, courant.bl_date) != cle:
             courant = GroupeBL(l["bl_numero"], l["bl_date"], [])
@@ -173,4 +186,5 @@ def construire_facture(conn, retro_id):
                    total_ht_calcule=doc["total_ht_calcule"],
                    motif_reconciliation=doc["motif_reconciliation"],
                    mentions_emettrice=mentions,
+                   destinataire_adresse=doc["pharmacie_destinataire_adresse"], pied_facture=pied,
                    n_a_verifier=n_a_verifier, lignes_a_verifier=a_verifier)
