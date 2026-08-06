@@ -34,6 +34,29 @@ def test_retro_ingest_un_renvoie_json(tmp_path):
     assert "cout" in r and "cout_total" in r
 
 
+class _ExtracteurRateRetro:
+    """Appel rétro facturé (dernier_cout > 0) qui échoue ensuite : jetons facturés,
+    rien de stocké."""
+
+    def __init__(self, cout=0.07):
+        self.dernier_cout = 0.0
+        self._cout = cout
+
+    def extraire(self, pdf, model):
+        self.dernier_cout = self._cout
+        raise RuntimeError("appel facturé puis échec")
+
+
+def test_cout_appel_retro_rate_est_comptabilise(tmp_path):
+    app = creer_app(db_path=str(tmp_path / "web.db"))
+    app.dependency_overrides[get_retro_extractor] = lambda: _ExtracteurRateRetro(0.07)
+    client = TestClient(app)
+    r = client.post("/retro/ingest-un",
+                    files={"fichier": ("retro.pdf", b"%PDF-1.4 x", "application/pdf")}).json()
+    assert "erreur" in r
+    assert abs(r["cout_total"] - 0.07) < 1e-6
+
+
 def test_retro_lignes_200(tmp_path):
     client = _client(tmp_path)
     client.post("/retro/ingest-un",

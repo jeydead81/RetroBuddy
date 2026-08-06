@@ -44,6 +44,15 @@ class ExtracteurPreExtrait:
         self.dernier_cout = cout
         return resultat
 
+    @property
+    def cout_total(self):
+        """Coût déjà dépensé en lot pour ce fichier (tous modèles confondus).
+
+        Sert à comptabiliser un échec survenu APRÈS l'extraction batch (garde-fou,
+        écriture BDD…) : les jetons ont bien été facturés même si rien n'est stocké.
+        """
+        return sum(cout for _, cout in self._par_modele.values())
+
 
 def _params_requete(modele, prompt, schema, pdf_b64):
     # Miroir exact de ClaudeExtractor.extraire (messages.parse), en forme "batch".

@@ -105,6 +105,14 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
                   "ON CONFLICT(cle) DO UPDATE SET valeur=excluded.valeur", (cle, str(valeur)))
         c.commit()
 
+    def _ajouter_cout_erreur(cle, cout):
+        """Comptabilise le coût d'un appel d'extraction qui a échoué : Anthropic
+        l'a facturé, mais aucune ligne n'est stockée. Sans ça, le cumul affiché
+        sous-estime la facture réelle (cas des factures tronquées, erreurs API…)."""
+        cout = float(cout or 0.0)
+        if cout > 0:
+            _set_param(cle, float(_param(cle, "0")) + cout)
+
     def _cle_info():
         cle = (charger_config().get("anthropic_api_key") or "").strip()
         masquee = ("…" + cle[-4:]) if len(cle) >= 4 else ("…" if cle else "")
@@ -116,6 +124,7 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
     def _cout_total():
         v = conn().execute(
             "SELECT COALESCE(SUM(cout_estime), 0) c FROM factures").fetchone()["c"]
+        v += float(_param("cout_erreurs_labo", "0"))     # appels ratés (facturés, non stockés)
         return round(max(0.0, v - float(_param("cout_baseline_labo", "0"))), 4)
 
     def _doublon_pdf(chemin, table):
@@ -136,6 +145,7 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
             tmp.write(fichier.file.read())
             chemin = tmp.name
         try:
+            extractor.dernier_cout = 0.0           # pour récupérer le coût même en cas d'échec
             emp, deja = _doublon_pdf(chemin, "factures")
             if deja:
                 statut, n_ref, cout = "ignoree", 0, 0.0
@@ -148,6 +158,7 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
                 statut, motif, n_ref, cout = res.statut, res.motif, res.n_referentiel, res.cout
         except Exception as e:  # un PDF qui échoue ne doit pas casser le lot
             statut, motif, n_ref, cout = "erreur", _motif_erreur(e), 0, 0.0
+            _ajouter_cout_erreur("cout_erreurs_labo", getattr(extractor, "dernier_cout", 0.0))
         finally:
             Path(chemin).unlink(missing_ok=True)
         return {"fichier": fichier.filename, "statut": statut, "motif": motif,
@@ -463,6 +474,7 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
     def _cout_total_retro():
         v = conn().execute(
             "SELECT COALESCE(SUM(cout_estime), 0) c FROM retro_documents").fetchone()["c"]
+        v += float(_param("cout_erreurs_retro", "0"))    # appels ratés (facturés, non stockés)
         return round(max(0.0, v - float(_param("cout_baseline_retro", "0"))), 4)
 
     def _ingerer_retro_un(fichier, extractor):
@@ -470,6 +482,7 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
             tmp.write(fichier.file.read())
             chemin = tmp.name
         try:
+            extractor.dernier_cout = 0.0           # pour récupérer le coût même en cas d'échec
             emp, deja = _doublon_pdf(chemin, "retro_documents")
             if deja:
                 out = {"n_lignes": 0, "n_resolu": 0, "n_rouge": 0, "cout": 0.0,
@@ -484,6 +497,7 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
         except Exception as e:
             out = {"n_lignes": 0, "n_resolu": 0, "n_rouge": 0, "cout": 0.0,
                    "erreur": _motif_erreur(e)}
+            _ajouter_cout_erreur("cout_erreurs_retro", getattr(extractor, "dernier_cout", 0.0))
         finally:
             Path(chemin).unlink(missing_ok=True)
         out.update({"fichier": fichier.filename,
@@ -639,6 +653,7 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
 
     def _traiter_fichier_labo(nom, chemin, extractor):
         try:
+            extractor.dernier_cout = 0.0           # pour récupérer le coût même en cas d'échec
             emp, deja = _doublon_pdf(chemin, "factures")
             if deja:
                 out = {"statut": "ignoree", "n_referentiel": 0, "cout": 0.0,
@@ -653,6 +668,7 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
         except Exception as e:
             out = {"statut": "erreur", "motif": _motif_erreur(e),
                    "n_referentiel": 0, "cout": 0.0}
+            _ajouter_cout_erreur("cout_erreurs_labo", getattr(extractor, "dernier_cout", 0.0))
         finally:
             Path(chemin).unlink(missing_ok=True)
         out.update({"fichier": nom, "n_total": _nombre_factures(), "cout_total": _cout_total()})
@@ -660,6 +676,7 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
 
     def _traiter_fichier_retro(nom, chemin, extractor):
         try:
+            extractor.dernier_cout = 0.0           # pour récupérer le coût même en cas d'échec
             emp, deja = _doublon_pdf(chemin, "retro_documents")
             if deja:
                 out = {"statut": "ignoree",
@@ -675,6 +692,7 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
         except Exception as e:
             out = {"statut": "erreur", "motif": _motif_erreur(e),
                    "n_lignes": 0, "n_resolu": 0, "n_orange": 0, "n_rouge": 0, "cout": 0.0}
+            _ajouter_cout_erreur("cout_erreurs_retro", getattr(extractor, "dernier_cout", 0.0))
         finally:
             Path(chemin).unlink(missing_ok=True)
         out.update({"fichier": nom, "n_total": _nombre_retro(),
@@ -685,6 +703,8 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
     SEUIL_LOT = 10
 
     def _resultat_labo(nom, statut, motif, n_ref, cout):
+        if statut == "erreur":                       # appel facturé mais rien de stocké
+            _ajouter_cout_erreur("cout_erreurs_labo", cout)
         return {"fichier": nom, "statut": statut, "motif": motif,
                 "n_referentiel": n_ref, "cout": round(cout, 5),
                 "n_total": _nombre_factures(), "cout_total": _cout_total()}
@@ -701,7 +721,9 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
         except EscaladeDifferee:
             raise
         except Exception as e:
-            out = _resultat_labo(nom, "erreur", _motif_erreur(e), 0, 0.0)
+            # Extraction batch déjà facturée : on comptabilise ce coût malgré l'échec.
+            out = _resultat_labo(nom, "erreur", _motif_erreur(e), 0,
+                                 getattr(pre_extrait, "cout_total", 0.0))
         Path(chemin).unlink(missing_ok=True)
         return out
 
@@ -744,6 +766,8 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
                 if not ok:
                     if isinstance(resultat, str) and "tronqu" in resultat.lower():
                         # Trop longue pour un appel batch -> découpage synchrone (rare).
+                        # La tentative batch tronquée a été facturée : on la compte.
+                        _ajouter_cout_erreur("cout_erreurs_labo", cout)
                         _pousser(_traiter_fichier_labo(nom, chemin, extractor))
                     else:
                         Path(chemin).unlink(missing_ok=True)
@@ -767,6 +791,8 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
                     f_sonnet, c_sonnet = sonnet_par_cle[cle]
                     if not ok:
                         if isinstance(resultat, str) and "tronqu" in resultat.lower():
+                            # Sonnet + tentative Opus tronquée : tous deux facturés.
+                            _ajouter_cout_erreur("cout_erreurs_labo", c_sonnet + cout)
                             _pousser(_traiter_fichier_labo(nom, chemin, extractor))
                         else:
                             Path(chemin).unlink(missing_ok=True)
@@ -780,6 +806,115 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
             # Échec global (réseau, lot rejeté…) : le signaler sans laisser le job tourner.
             registre.ajouter(job_id, _resultat_labo(
                 "(lot)", "erreur", _motif_erreur(e), 0, 0.0), compter=False)
+        finally:
+            registre.terminer(job_id)
+
+    def _resultat_retro(nom, statut, motif, n_lignes, n_resolu, n_orange, n_rouge, cout):
+        if statut == "erreur":                       # appel facturé mais rien de stocké
+            _ajouter_cout_erreur("cout_erreurs_retro", cout)
+        return {"fichier": nom, "statut": statut, "motif": motif,
+                "n_lignes": n_lignes, "n_resolu": n_resolu, "n_orange": n_orange,
+                "n_rouge": n_rouge, "cout": round(cout, 5),
+                "n_total": _nombre_retro(), "cout_total": _cout_total_retro()}
+
+    def _finaliser_fichier_retro_lot(nom, chemin, emp, pre_extrait):
+        """Applique le pipeline rétro (réconciliation, matching, référentiel) à un
+        fichier déjà extrait en lot. EscaladeDifferee remonte à l'appelant (2e lot Opus)."""
+        pdf = PdfDocument(nom=nom, base64="", taille_octets=0)
+        try:
+            res = traiter_retro(conn(), pdf, pre_extrait, app.state.config)
+            _marquer_empreinte("retro_documents", res.retro_id, emp)
+            out = _resultat_retro(nom, "ok", None, res.n_lignes, res.n_resolu,
+                                  res.n_orange, res.n_rouge, res.cout)
+        except EscaladeDifferee:
+            raise
+        except Exception as e:
+            # Extraction batch déjà facturée : on comptabilise ce coût malgré l'échec.
+            out = _resultat_retro(nom, "erreur", _motif_erreur(e), 0, 0, 0, 0,
+                                  getattr(pre_extrait, "cout_total", 0.0))
+        Path(chemin).unlink(missing_ok=True)
+        return out
+
+    def _job_lot_retro(job_id, paires, extractor):
+        """Import rétro en mode lot : dédup, batch Sonnet, pipeline, batch Opus pour
+        les escalades. Miroir de _job_lot_labo (Batch API -50 %, résultats différés)."""
+        registre = app.state.jobs_retro
+        cfg = app.state.config
+        avance = 0
+
+        def _pousser(out):
+            nonlocal avance
+            registre.ajouter(job_id, out, compter=False)
+            avance += 1
+            registre.maj_avancement(job_id, avance)
+
+        try:
+            restants = []                      # [(nom, chemin, empreinte)]
+            for nom, chemin in paires:
+                emp, deja = _doublon_pdf(chemin, "retro_documents")
+                if deja:
+                    Path(chemin).unlink(missing_ok=True)
+                    _pousser(_resultat_retro(
+                        nom, "ignoree",
+                        f"PDF identique à la facture rétro #{deja} déjà importée (0 €)",
+                        0, 0, 0, 0, 0.0))
+                else:
+                    restants.append((nom, chemin, emp))
+
+            client, prompt = extractor.client, extractor.prompt
+            lots = soumettre_lots(client, cfg["model_defaut"], prompt, RetroExtrait,
+                                  [(str(i), chemin) for i, (_, chemin, _) in enumerate(restants)])
+            base = avance
+            attendre_lots(client, lots,
+                          progression=lambda n: registre.maj_avancement(job_id, base + n))
+
+            escalades = []                     # [(index, retro_sonnet, cout_sonnet)]
+            for cle, ok, resultat, cout in resultats_lots(
+                    client, lots, cfg["model_defaut"], RetroExtrait):
+                nom, chemin, emp = restants[int(cle)]
+                if not ok:
+                    if isinstance(resultat, str) and "tronqu" in resultat.lower():
+                        # Trop longue pour un appel batch -> découpage synchrone (rare).
+                        # La tentative batch tronquée a été facturée : on la compte.
+                        _ajouter_cout_erreur("cout_erreurs_retro", cout)
+                        _pousser(_traiter_fichier_retro(nom, chemin, extractor))
+                    else:
+                        Path(chemin).unlink(missing_ok=True)
+                        _pousser(_resultat_retro(nom, "erreur", resultat, 0, 0, 0, 0, cout))
+                    continue
+                pre = ExtracteurPreExtrait({cfg["model_defaut"]: (resultat, cout)})
+                try:
+                    _pousser(_finaliser_fichier_retro_lot(nom, chemin, emp, pre))
+                except EscaladeDifferee:
+                    escalades.append((int(cle), resultat, cout))
+
+            if escalades:
+                lots2 = soumettre_lots(
+                    client, cfg["model_escalade"], prompt, RetroExtrait,
+                    [(str(i), restants[i][1]) for i, _, _ in escalades])
+                attendre_lots(client, lots2)
+                sonnet_par_cle = {str(i): (f, c) for i, f, c in escalades}
+                for cle, ok, resultat, cout in resultats_lots(
+                        client, lots2, cfg["model_escalade"], RetroExtrait):
+                    nom, chemin, emp = restants[int(cle)]
+                    f_sonnet, c_sonnet = sonnet_par_cle[cle]
+                    if not ok:
+                        if isinstance(resultat, str) and "tronqu" in resultat.lower():
+                            # Sonnet + tentative Opus tronquée : tous deux facturés.
+                            _ajouter_cout_erreur("cout_erreurs_retro", c_sonnet + cout)
+                            _pousser(_traiter_fichier_retro(nom, chemin, extractor))
+                        else:
+                            Path(chemin).unlink(missing_ok=True)
+                            _pousser(_resultat_retro(nom, "erreur", resultat, 0, 0, 0, 0,
+                                                     c_sonnet + cout))
+                        continue
+                    pre = ExtracteurPreExtrait({
+                        cfg["model_defaut"]: (f_sonnet, c_sonnet),
+                        cfg["model_escalade"]: (resultat, cout)})
+                    _pousser(_finaliser_fichier_retro_lot(nom, chemin, emp, pre))
+        except Exception as e:
+            registre.ajouter(job_id, _resultat_retro(
+                "(lot)", "erreur", _motif_erreur(e), 0, 0, 0, 0, 0.0), compter=False)
         finally:
             registre.terminer(job_id)
 
@@ -811,8 +946,13 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
         fichiers = [f for f in form.getlist("fichiers") if hasattr(f, "file")]
         paires = _enregistrer_temp(fichiers)
         job_id = app.state.jobs_retro.creer(len(paires))
-        lancer_job(app.state.jobs_retro, job_id, paires,
-                   lambda n, c: _traiter_fichier_retro(n, c, extractor))
+        # Gros import + vrai extracteur Claude -> Batch API (-50 %, résultats différés).
+        if len(paires) >= SEUIL_LOT and hasattr(extractor, "client"):
+            threading.Thread(target=_job_lot_retro, args=(job_id, paires, extractor),
+                             daemon=True).start()
+        else:
+            lancer_job(app.state.jobs_retro, job_id, paires,
+                       lambda n, c: _traiter_fichier_retro(n, c, extractor))
         return {"job_id": job_id, "total": len(paires)}
 
     @app.get("/retro/progress/{job_id}")
@@ -1009,10 +1149,10 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
         # Baseline non-destructif : on mémorise le cumul courant comme "point zéro".
         if quoi in ("labo", "tout"):
             v = conn().execute("SELECT COALESCE(SUM(cout_estime),0) c FROM factures").fetchone()["c"]
-            _set_param("cout_baseline_labo", v)
+            _set_param("cout_baseline_labo", v + float(_param("cout_erreurs_labo", "0")))
         if quoi in ("retro", "tout"):
             v = conn().execute("SELECT COALESCE(SUM(cout_estime),0) c FROM retro_documents").fetchone()["c"]
-            _set_param("cout_baseline_retro", v)
+            _set_param("cout_baseline_retro", v + float(_param("cout_erreurs_retro", "0")))
         return RedirectResponse("/reglages?ok=cout-" + quoi, status_code=303)
 
     @app.post("/donnees/supprimer/{quoi}")
@@ -1031,12 +1171,14 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
         c = conn()
         for t in tables[quoi]:
             c.execute(f"DELETE FROM {t}")
-        if quoi in ("factures", "tout"):           # données effacées -> baseline coût remise à 0
-            c.execute("INSERT INTO parametres(cle,valeur) VALUES('cout_baseline_labo','0') "
-                      "ON CONFLICT(cle) DO UPDATE SET valeur='0'")
+        if quoi in ("factures", "tout"):           # données effacées -> coût labo remis à 0
+            for cle in ("cout_baseline_labo", "cout_erreurs_labo"):
+                c.execute("INSERT INTO parametres(cle,valeur) VALUES(?,'0') "
+                          "ON CONFLICT(cle) DO UPDATE SET valeur='0'", (cle,))
         if quoi in ("retro", "tout"):
-            c.execute("INSERT INTO parametres(cle,valeur) VALUES('cout_baseline_retro','0') "
-                      "ON CONFLICT(cle) DO UPDATE SET valeur='0'")
+            for cle in ("cout_baseline_retro", "cout_erreurs_retro"):
+                c.execute("INSERT INTO parametres(cle,valeur) VALUES(?,'0') "
+                          "ON CONFLICT(cle) DO UPDATE SET valeur='0'", (cle,))
         c.commit()
         return RedirectResponse("/reglages?ok=suppr-" + quoi, status_code=303)
 

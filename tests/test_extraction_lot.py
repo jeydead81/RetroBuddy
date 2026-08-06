@@ -6,10 +6,11 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.db import get_connection
-from app.main import creer_app, get_extractor
+from app.main import creer_app, get_extractor, get_retro_extractor
 from app.temps1.extraction_lot import (EscaladeDifferee, ExtracteurPreExtrait,
                                        attendre_lots, resultats_lots, soumettre_lots)
 from app.temps1.schemas import EnteteFacture, FactureExtraite, LigneFacture
+from app.temps2.schemas import RetroEntete, RetroExtrait, RetroLigne, VentilationTvaLgo
 
 # ---------------------------------------------------------------- faux client
 
@@ -125,10 +126,10 @@ class FauxExtracteurLot:
         self.prompt = "prompt de test"
 
 
-def _attendre_job(client_http, job_id, timeout=10):
+def _attendre_job(client_http, job_id, timeout=10, url="/ingest/progress"):
     debut = time.monotonic()
     while time.monotonic() - debut < timeout:
-        j = client_http.get(f"/ingest/progress/{job_id}").json()
+        j = client_http.get(f"{url}/{job_id}").json()
         if j.get("termine"):
             return j
         time.sleep(0.05)
@@ -178,6 +179,64 @@ def test_job_lot_dedup_zero_cout(tmp_path):
     assert j1["cout"] > 0
     # ré-import du MÊME lot : tout dédupliqué, coût 0
     j2 = _attendre_job(client, client.post("/ingest/start", files=fichiers).json()["job_id"])
+    assert j2["fait"] == 12
+    assert j2["cout"] == 0.0
+    assert all(d["statut"] == "ignoree" for d in j2["details"])
+
+
+# ---------------------------------------------------------- rétrocession en lot
+
+def _retro_json(total=10.0):
+    return RetroExtrait(
+        type_document="retro_lgo",
+        entete=RetroEntete(
+            pharmacie_emettrice="A", pharmacie_destinataire="B",
+            date_vente="22/09/2025", numero="N1", total_ht_affiche=total,
+            ventilation=[VentilationTvaLgo(taux=10.0, montant_ht=10.0)]),
+        lignes=[RetroLigne(designation="X", code="3400930000007", type_code="CIP13",
+                           qte=2.0, tva=10.0, bl_numero="BL1", bl_date="01/08/2025",
+                           montant_ht=10.0, prix_net_lgo=5.0)]).model_dump_json()
+
+
+def test_job_lot_retro_batch_et_escalade(tmp_path):
+    # 12 fichiers (>= seuil lot) -> Batch API rétro. Le fichier n°3 : Sonnet renvoie
+    # un total faux -> escalade -> Opus renvoie un total juste (2e lot).
+    def reponses(cid, modele):
+        if cid == "3" and modele == "claude-sonnet-4-6":
+            return _retro_json(total=999.0)                  # ne réconcilie pas
+        return _retro_json(total=10.0)
+
+    app = creer_app(db_path=str(tmp_path / "web.db"))
+    app.dependency_overrides[get_retro_extractor] = lambda: FauxExtracteurLot(reponses)
+    client = TestClient(app)
+
+    fichiers = [("fichiers", (f"r{i}.pdf", b"%PDF retro " + str(i).encode(), "application/pdf"))
+                for i in range(12)]
+    r = client.post("/retro/ingest/start", files=fichiers)
+    j = _attendre_job(client, r.json()["job_id"], url="/retro/progress")
+
+    assert j["total"] == 12 and j["fait"] == 12
+    assert j["cout"] > 0                                       # extractions batch facturées
+    c = get_connection(str(tmp_path / "web.db"))
+    assert c.execute("SELECT COUNT(*) n FROM retro_documents").fetchone()["n"] == 12
+    assert c.execute("SELECT COUNT(*) n FROM retro_lignes").fetchone()["n"] == 12
+    # les 12 réconcilient (le n°3 grâce à l'escalade Opus du 2e lot)
+    assert c.execute("SELECT COUNT(*) n FROM retro_documents "
+                     "WHERE reconciliation_ok=1").fetchone()["n"] == 12
+
+
+def test_job_lot_retro_dedup_zero_cout(tmp_path):
+    app = creer_app(db_path=str(tmp_path / "web.db"))
+    app.dependency_overrides[get_retro_extractor] = lambda: FauxExtracteurLot(
+        lambda cid, m: _retro_json())
+    client = TestClient(app)
+    contenu = [(f"r{i}.pdf", b"%PDF dup " + str(i).encode()) for i in range(12)]
+    fichiers = [("fichiers", (n, b, "application/pdf")) for n, b in contenu]
+    j1 = _attendre_job(client, client.post("/retro/ingest/start", files=fichiers).json()["job_id"],
+                       url="/retro/progress")
+    assert j1["cout"] > 0
+    j2 = _attendre_job(client, client.post("/retro/ingest/start", files=fichiers).json()["job_id"],
+                       url="/retro/progress")
     assert j2["fait"] == 12
     assert j2["cout"] == 0.0
     assert all(d["statut"] == "ignoree" for d in j2["details"])

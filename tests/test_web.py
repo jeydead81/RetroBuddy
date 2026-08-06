@@ -73,6 +73,31 @@ def test_ingest_un_renvoie_cout(tmp_path):
     assert "cout_total" in r
 
 
+class _ExtracteurRate:
+    """Simule un appel facturé (dernier_cout > 0) qui échoue juste après :
+    Anthropic a facturé les jetons, mais rien n'est stocké."""
+
+    def __init__(self, cout=0.05):
+        self.dernier_cout = 0.0
+        self._cout = cout
+
+    def extraire(self, pdf, model):
+        self.dernier_cout = self._cout          # l'appel API a bien eu lieu -> facturé
+        raise RuntimeError("appel facturé puis échec")
+
+
+def test_cout_appel_rate_est_comptabilise(tmp_path):
+    # Un appel d'extraction facturé mais raté doit entrer dans le cumul affiché,
+    # sinon le compteur sous-estime la facture Anthropic.
+    app = creer_app(db_path=str(tmp_path / "web.db"))
+    app.dependency_overrides[get_extractor] = lambda: _ExtracteurRate(0.05)
+    client = TestClient(app)
+    r = client.post("/ingest-un",
+                    files={"fichier": ("f.pdf", b"%PDF-1.4 x", "application/pdf")}).json()
+    assert r["statut"] == "erreur"
+    assert abs(r["cout_total"] - 0.05) < 1e-6
+
+
 def test_accueil_affiche_cout_cumule(tmp_path):
     assert "coût cumulé" in _client(tmp_path).get("/import-labos").text.lower()
 
