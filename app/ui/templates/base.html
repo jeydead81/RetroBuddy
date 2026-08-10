@@ -94,8 +94,16 @@
     /* Facture LGPI payée : toute la ligne en vert clair (flag 1 clic). */
     tr.payee td{ background:#E9F9EE; }
     tr.payee:hover td{ background:#DCF5E4; }
+    /* Bouton coche « payé » : gris par défaut, vert plein une fois cliqué. */
     td.paye-col{ text-align:center; }
-    td.paye-col input{ width:auto; cursor:pointer; transform:scale(1.15); }
+    td.paye-col button{
+      width:1.9rem; height:1.9rem; min-width:0; padding:0; border-radius:999px;
+      border:1.5px solid #CBD5E1; background-color:#EEF2F6; color:#94A3B8;
+      font-size:1.05rem; line-height:1; font-weight:700; cursor:pointer;
+      display:inline-flex; align-items:center; justify-content:center; }
+    td.paye-col button:hover{ background-color:#E2E8F0; border-color:#94A3B8; }
+    td.paye-col button.on{ background-color:#15803D; border-color:#15803D; color:#fff; }
+    td.paye-col button.on:hover{ background-color:#166534; border-color:#166534; }
 
     /* Compteur + barre de progression */
     #compteur{ font-family:'Figtree',sans-serif; font-size:1.3rem; font-weight:700;

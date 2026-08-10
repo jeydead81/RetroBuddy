@@ -36,8 +36,9 @@
       <td class="{{ 'en_revue' if r['n_rouge'] else 'ingeree' }}">{{ r["n_rouge"] }}</td>
       <td>{% if r["reconciliation_ok"] == 0 %}<span class="badge b-danger">⚠ à vérifier</span>{% else %}<span class="badge b-ok">OK</span>{% endif %}</td>
       <td>{% if r["n_meme_numero"] and r["n_meme_numero"] > 1 %}<span class="badge b-danger">⚠ doublon</span>{% endif %}</td>
-      <td class="paye-col"><input type="checkbox" class="paye-flag" title="Marquer comme payée"
-          {% if r['paye'] %}checked{% endif %} onchange="togglePaye(this, {{ r['id'] }})"></td>
+      <td class="paye-col"><button type="button" class="paye-btn{% if r['paye'] %} on{% endif %}"
+          aria-pressed="{{ 'true' if r['paye'] else 'false' }}" onclick="togglePaye(this, {{ r['id'] }})"
+          title="{% if r['paye'] %}Payée — cliquer pour annuler{% else %}Marquer comme payée{% endif %}">✓</button></td>
       <td><a href="/facture/{{ r['id'] }}">Ouvrir</a></td>
     </tr>
   {% endfor %}
@@ -98,12 +99,21 @@ async function telechargerSelection() {
     majBtn();
   }
 }
-async function togglePaye(cb, id) {
-  const r = await fetch("/facture/" + id + "/paye", {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ paye: cb.checked }) });
-  if (!r.ok) { cb.checked = !cb.checked; alert("Enregistrement impossible."); return; }
-  cb.closest("tr").classList.toggle("payee", cb.checked);
+async function togglePaye(btn, id) {
+  const paye = !btn.classList.contains("on");        // état visé par le clic
+  btn.disabled = true;
+  try {
+    const r = await fetch("/facture/" + id + "/paye", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ paye }) });
+    if (!r.ok) { alert("Enregistrement impossible."); return; }
+    btn.classList.toggle("on", paye);               // ne change qu'après confirmation serveur
+    btn.setAttribute("aria-pressed", paye ? "true" : "false");
+    btn.title = paye ? "Payée — cliquer pour annuler" : "Marquer comme payée";
+    btn.closest("tr").classList.toggle("payee", paye);
+  } finally {
+    btn.disabled = false;
+  }
 }
 </script>
 {% else %}
