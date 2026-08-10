@@ -108,6 +108,7 @@ _COLONNES_AJOUTEES = [
     # 'facture' (prix issu d'une facture labo) | 'resolution' (prix saisi à la main).
     ("referentiel_prix", "source", "TEXT DEFAULT 'facture'"),
     ("retro_documents", "pharmacie_destinataire_adresse", "TEXT"),   # bloc adresse du destinataire
+    ("retro_documents", "paye", "INTEGER DEFAULT 0"),   # flag "facture payée" (coche verte)
 ]
 
 

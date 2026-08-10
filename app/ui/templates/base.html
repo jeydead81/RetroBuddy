@@ -91,6 +91,11 @@
     /* Labo/produit surveillé (UG possible) : toute la ligne en bleu clair. */
     tr.surveille td{ background:#E7F0FF; }
     tr.surveille:hover td{ background:#DCE9FF; }
+    /* Facture LGPI payée : toute la ligne en vert clair (flag 1 clic). */
+    tr.payee td{ background:#E9F9EE; }
+    tr.payee:hover td{ background:#DCF5E4; }
+    td.paye-col{ text-align:center; }
+    td.paye-col input{ width:auto; cursor:pointer; transform:scale(1.15); }
 
     /* Compteur + barre de progression */
     #compteur{ font-family:'Figtree',sans-serif; font-size:1.3rem; font-weight:700;

@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 config.local.yaml
 data/*.db
+data/*.db-*
 data/samples/
 .pytest_cache/
 .claude/settings.local.json

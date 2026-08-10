@@ -1,5 +1,9 @@
+import io
+import zipfile
+
 from fastapi.testclient import TestClient
 
+from app.db import get_connection
 from app.main import creer_app
 
 
@@ -60,3 +64,39 @@ def test_facture_pdf_bloquee_renvoie_409(tmp_path):
 
 def test_facture_inconnue_404(tmp_path):
     assert _client(tmp_path).get("/facture/999/csv").status_code == 404
+
+
+def test_facture_paye_toggle(tmp_path):
+    client = _client(tmp_path)
+    conn, rid = _doc(client)
+    assert client.post(f"/facture/{rid}/paye", json={"paye": True}).json()["paye"] is True
+    c = get_connection(client.app.state.db_path)
+    assert c.execute("SELECT paye FROM retro_documents WHERE id=?", (rid,)).fetchone()["paye"] == 1
+    assert client.post(f"/facture/{rid}/paye", json={"paye": False}).json()["paye"] is False
+    assert c.execute("SELECT paye FROM retro_documents WHERE id=?", (rid,)).fetchone()["paye"] == 0
+
+
+def test_facture_paye_404(tmp_path):
+    assert _client(tmp_path).post("/facture/999/paye", json={"paye": True}).status_code == 404
+
+
+def test_telecharger_lot_exclut_incompletes(tmp_path):
+    client = _client(tmp_path)
+    conn, rid_ok = _doc(client)
+    _ligne(conn, rid_ok, statut="resolu")                 # complète -> incluse
+    conn2, rid_ko = _doc(client)
+    _ligne(conn2, rid_ko, statut="rouge", prix_net=0.0)   # à compléter -> exclue
+    r = client.post("/factures-retro/telecharger", json={"ids": [rid_ok, rid_ko]})
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "application/zip"
+    assert r.headers["x-factures-inclus"] == "1"
+    assert r.headers["x-factures-exclus"] == "1"
+    noms = zipfile.ZipFile(io.BytesIO(r.content)).namelist()
+    assert noms == [f"facture_{rid_ok}.pdf"]
+
+
+def test_telecharger_lot_aucune_complete_409(tmp_path):
+    client = _client(tmp_path)
+    conn, rid_ko = _doc(client)
+    _ligne(conn, rid_ko, statut="rouge", prix_net=0.0)
+    assert client.post("/factures-retro/telecharger", json={"ids": [rid_ko]}).status_code == 409

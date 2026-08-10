@@ -1,6 +1,8 @@
 import hashlib
+import io
 import tempfile
 import threading
+import zipfile
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request, UploadFile
@@ -10,7 +12,7 @@ from fastapi.templating import Jinja2Templates
 from app import surveillance
 from app.config import charger_config, enregistrer_cle_api
 from app.db import get_connection, init_db
-from app.format_util import fmt_qte
+from app.format_util import fmt_horodatage, fmt_qte
 from app.temps1.extraction_ia import ClaudeExtractor
 from app.temps1.extraction_lot import (EscaladeDifferee, ExtracteurPreExtrait,
                                        attendre_lots, resultats_lots, soumettre_lots)
@@ -32,6 +34,7 @@ from app.jobs import RegistreJobs, lancer_job
 
 TEMPLATES = Jinja2Templates(directory="app/ui/templates")
 TEMPLATES.env.filters["qte"] = fmt_qte   # affiche les quantités en entier (3.0 -> 3)
+TEMPLATES.env.filters["horodatage"] = fmt_horodatage   # UTC SQLite -> 'jj/mm/aa : hh:mm' local
 
 
 def empreinte_fichier(chemin):
@@ -451,6 +454,31 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
             c.execute("DELETE FROM retro_documents WHERE id = ?", (rid,))
         c.commit()
         return {"supprimees": len(ids)}
+
+    @app.post("/factures-retro/telecharger")
+    async def factures_retro_telecharger(request: Request):
+        """Télécharge en lot (.zip) le PDF des factures LGPI sélectionnées, en excluant
+        celles qui sont incomplètes (lignes à compléter/à vérifier, ou contrôle total KO).
+        Le nombre inclus/exclu est renvoyé dans des en-têtes pour informer l'utilisateur."""
+        ids = [int(i) for i in (await request.json()).get("ids", [])]
+        buf = io.BytesIO()
+        inclus = exclus = 0
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+            for rid in ids:
+                f = construire_facture(conn(), rid)
+                if f is None or f.bloquee:          # incomplète -> jamais dans le lot
+                    exclus += 1
+                    continue
+                z.writestr(f"facture_{rid}.pdf", facture_pdf(f))
+                inclus += 1
+        if inclus == 0:
+            raise HTTPException(
+                status_code=409,
+                detail="Aucune facture complète dans la sélection.")
+        return Response(
+            content=buf.getvalue(), media_type="application/zip",
+            headers={"Content-Disposition": 'attachment; filename="factures_lgpi.zip"',
+                     "X-Factures-Inclus": str(inclus), "X-Factures-Exclus": str(exclus)})
 
     @app.get("/export-base")
     def export_base():
@@ -985,7 +1013,8 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
         pages = max(1, (total + TAILLE_PAGE - 1) // TAILLE_PAGE)
         page = max(1, min(page, pages))
         rows = c.execute(
-            "SELECT d.id, d.numero, d.pharmacie_emettrice, d.pharmacie_destinataire, "
+            "SELECT d.id, d.numero, d.ingere_le, d.paye, "
+            "d.pharmacie_emettrice, d.pharmacie_destinataire, "
             "d.reconciliation_ok, COUNT(l.id) n_lignes, "
             "SUM(CASE WHEN l.statut_ecart='resolu' THEN 1 ELSE 0 END) n_resolu, "
             "SUM(CASE WHEN l.statut_ecart='rouge' THEN 1 ELSE 0 END) n_rouge, "
@@ -1017,6 +1046,17 @@ def creer_app(db_path="data/retrocession.db") -> FastAPI:
         c.execute("DELETE FROM retro_documents WHERE id = ?", (retro_id,))
         c.commit()
         return {"ok": True}
+
+    @app.post("/facture/{retro_id}/paye")
+    async def facture_paye(retro_id: int, request: Request):
+        """Bascule le flag « payé » d'une facture LGPI (coche verte, 1 clic)."""
+        paye = 1 if (await request.json()).get("paye") else 0
+        c = conn()
+        cur = c.execute("UPDATE retro_documents SET paye=? WHERE id=?", (paye, retro_id))
+        c.commit()
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=404, detail="facture introuvable")
+        return {"ok": True, "paye": bool(paye)}
 
     @app.post("/facture/{retro_id}/recontroler")
     def facture_recontroler(retro_id: int):
