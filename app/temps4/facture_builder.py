@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 
 from app.surveillance import est_surveille, termes_surveilles
+from app.temps2.calcul_prix import prix_a_date
 
 # Pied de page par défaut (mention CGA) — modifiable dans Réglages (param 'pied_facture').
 PIED_FACTURE_DEFAUT = ("Membre d'un centre de gestion agréé par l'administration fiscale, "
@@ -25,6 +26,12 @@ class LigneFacturee:
     bl_numero: str | None = None
     bl_date: str | None = None
     surveille: bool = False           # labo/produit surveillé (UG possible) -> flag bleu
+    # Facture labo d'où vient le prix (lien 📄 à l'écran) — None si prix saisi à la main,
+    # corrigé, ou si la facture labo n'existe plus. Jamais dans les exports.
+    source_facture_id: int | None = None
+    source_labo: str | None = None
+    source_date: str | None = None
+    source_code: str | None = None
 
 
 @dataclass
@@ -96,6 +103,29 @@ def _net_incoherent(qte, prix_brut, remise_pct, prix_net, ug):
     return None
 
 
+def _source_labo(conn, ligne):
+    """Facture labo qui a fourni le prix de cette ligne rétro, ou None.
+
+    Retrouvée à l'affichage (donc valable pour les factures déjà importées) via le même
+    `prix_a_date` que le rapprochement. On ne renvoie un lien QUE s'il est certain :
+    ligne non saisie à la main, prix issu d'une facture labo (pas d'une résolution ni
+    d'une retouche du référentiel), PA net identique à celui affiché, et facture labo
+    toujours présente. Dans le doute : pas de lien, plutôt qu'un lien trompeur."""
+    if ligne["saisie_manuelle"] or not ligne["code_resolu"] or ligne["prix_net"] is None:
+        return None
+    prix = prix_a_date(conn, ligne["code_resolu"], ligne["bl_date"])
+    if (prix is None or prix["source"] != "facture" or prix["modifie_manuellement"]
+            or not prix["facture_id"] or prix["prix_net"] is None
+            or abs(prix["prix_net"] - ligne["prix_net"]) > 0.0001):
+        return None
+    f = conn.execute("SELECT id, labo, date_facture FROM factures WHERE id = ?",
+                     (prix["facture_id"],)).fetchone()
+    if f is None:
+        return None
+    return {"source_facture_id": f["id"], "source_labo": f["labo"],
+            "source_date": f["date_facture"], "source_code": ligne["code_resolu"]}
+
+
 def construire_facture(conn, retro_id):
     doc = conn.execute(
         "SELECT pharmacie_emettrice, pharmacie_destinataire, pharmacie_destinataire_adresse, "
@@ -119,8 +149,8 @@ def construire_facture(conn, retro_id):
                 break
 
     lignes = conn.execute(
-        "SELECT id, designation, code, qte, prix_brut, remise_pct, prix_net, tva, ug, "
-        "bl_numero, bl_date, statut_ecart, saisie_manuelle, valide_utilisateur "
+        "SELECT id, designation, code, code_resolu, qte, prix_brut, remise_pct, prix_net, tva, "
+        "ug, bl_numero, bl_date, statut_ecart, saisie_manuelle, valide_utilisateur "
         "FROM retro_lignes WHERE retro_id = ? ORDER BY id",
         (retro_id,)).fetchall()
     n_rouge = sum(1 for l in lignes if l["statut_ecart"] == "rouge")
@@ -148,20 +178,21 @@ def construire_facture(conn, retro_id):
         # à 0 -> on bloque tant que l'utilisateur ne l'a pas vérifiée (décision Baptiste).
         remise_zero = (l["remise_pct"] == 0) and not valide_main
         surveille = est_surveille(l["designation"], l["code"], termes)
+        source = _source_labo(conn, l) or {}
         if net_attendu is not None or remise_zero:
             a_verifier.append(LigneFacturee(
                 l["designation"], l["code"], qte, l["prix_brut"], remise, prix_net,
                 l["tva"], montant, id=l["id"], ug=l["ug"] or 0,
                 incoherente=True, net_attendu=net_attendu,
                 motif_verif=("prix incohérent" if net_attendu is not None else "remise à 0"),
-                bl_numero=l["bl_numero"], bl_date=l["bl_date"], surveille=surveille))
+                bl_numero=l["bl_numero"], bl_date=l["bl_date"], surveille=surveille, **source))
             continue
         total_ht = round(total_ht + montant, 2)
         taux = l["tva"] if l["tva"] is not None else 0.0
         bases[taux] = round(bases.get(taux, 0.0) + montant, 2)
         lf = LigneFacturee(l["designation"], l["code"], qte, l["prix_brut"],
                            remise, prix_net, l["tva"], montant,
-                           id=l["id"], ug=l["ug"] or 0, surveille=surveille)
+                           id=l["id"], ug=l["ug"] or 0, surveille=surveille, **source)
         cle = (l["bl_numero"], l["bl_date"])
         if courant is None or (courant.bl_numero, courant.bl_date) != cle:
             courant = GroupeBL(l["bl_numero"], l["bl_date"], [])

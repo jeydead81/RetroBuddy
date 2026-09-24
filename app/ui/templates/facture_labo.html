@@ -19,6 +19,7 @@
   .x-suppr:hover{ background:#FEE2E2; }
   #barre-suppr{ position:sticky; bottom:.4rem; display:none; gap:.6rem; align-items:center;
     background:#FEF2F2; border:1px solid #FECACA; border-radius:10px; padding:.6rem .9rem; margin:.6rem 0; }
+  tr.cible td{ background:#FEF9C3 !important; }   /* ligne venant du lien 📄 d'une facture rétro */
 </style>
 
 <p><a href="/factures">← Factures laboratoires</a></p>
@@ -59,7 +60,8 @@
       <th>PA net</th><th>Montant HT</th><th>Qté×net attendu</th><th>Au réf. ?</th><th></th></tr>
   {% for d in details %}
   {% set l = d.l %}
-  <tr class="{{ 'incoherent' if d.incoherent else ('net-manquant' if d.net_manquant else '') }}">
+  <tr class="{{ 'incoherent' if d.incoherent else ('net-manquant' if d.net_manquant else '') }}"
+      data-code="{{ l['code'] or '' }}" data-code-interne="{{ l['code_interne'] or '' }}">
     <td>{{ l["code"] or l["code_interne"] or "—" }}{% if l["checksum_ok"] == 0 and l["code"] %} <span class="pastille">code ?</span>{% endif %}</td>
     <td>{{ l["type_code"] or "" }}</td>
     <td>{{ l["designation"] }}</td>
@@ -97,6 +99,19 @@
 </div>
 
 <script>
+// Arrivée depuis le lien 📄 d'une facture rétro (?code=…) : surligne la ligne source.
+(function () {
+  const code = new URLSearchParams(location.search).get("code");
+  if (!code) return;
+  const tr = [...document.querySelectorAll("tr[data-code]")]
+    .find(t => t.dataset.code === code || t.dataset.codeInterne === code);
+  if (!tr) return;
+  tr.classList.add("cible");
+  // Après le chargement complet (sinon la mise en page bouge encore et on atterrit ailleurs).
+  history.scrollRestoration = "manual";
+  window.addEventListener("load", () => tr.scrollIntoView({ block: "center" }));
+})();
+
 const aSupprimer = new Set();
 function toggleSuppr(btn, id) {
   const tr = btn.closest("tr");

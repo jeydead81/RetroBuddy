@@ -10,7 +10,10 @@ FENETRE_RESOLUTION_JOURS = 183
 
 def _as_dict(r):
     return {"date_facture": r["date_facture"], "prix_brut": r["prix_brut"],
-            "remise_pct": r["remise_pct"], "prix_net": r["prix_net"]}
+            "remise_pct": r["remise_pct"], "prix_net": r["prix_net"],
+            # Traçabilité (lien « facture labo source » sur la facture rétro).
+            "facture_id": r["facture_id"], "source": r["source"],
+            "modifie_manuellement": r["modifie_manuellement"]}
 
 
 def _est_resolution(r):
@@ -29,14 +32,16 @@ def prix_a_date(conn, code_resolu, bl_date):
       - Correction manuelle : retenue seulement dans ±`FENETRE_RESOLUTION_JOURS`
         (avant OU après le BL).
       - À date égale, la correction manuelle l'emporte (on a corrigé CE prix-là).
-    Retourne un dict {date_facture, prix_brut, remise_pct, prix_net} ou None.
+    Retourne un dict {date_facture, prix_brut, remise_pct, prix_net, facture_id, source,
+    modifie_manuellement} ou None.
     """
     d_bl = normaliser_date(bl_date)
     if d_bl is None or not code_resolu:
         return None
     rows = conn.execute(
         "SELECT date_facture, prix_brut, remise_pct, prix_net, "
-        "COALESCE(source, 'facture') AS source FROM referentiel_prix WHERE code = ?",
+        "COALESCE(source, 'facture') AS source, facture_id, modifie_manuellement "
+        "FROM referentiel_prix WHERE code = ?",
         (code_resolu,),
     ).fetchall()
     par = [(normaliser_date(r["date_facture"]), r) for r in rows]
